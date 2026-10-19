@@ -28,6 +28,10 @@ export function getModelPath(): string {
 
 /** Check if the model file already exists on disk */
 export async function isModelDownloaded(): Promise<boolean> {
+  if (process.env.EXPO_PUBLIC_MOCK_LLM === 'true') {
+    return true; // Bypass 1.2GB model download in mock dev mode
+  }
+
   const modelPath = getModelPath();
   const fileInfo = await getInfoAsync(modelPath);
 

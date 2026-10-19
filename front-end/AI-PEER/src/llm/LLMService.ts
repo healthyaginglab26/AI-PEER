@@ -71,12 +71,21 @@ class LLMService {
    * This is slow (~5-10 seconds) so call it once at app start
    */
   async initialize(): Promise<void> {
-    if (Platform.OS === 'web') {
-      throw new Error('On-device LLM is not available on web builds.');
-    }
-
     if (this.context) {
       console.log('LLM already initialized');
+      return;
+    }
+
+    if (process.env.EXPO_PUBLIC_MOCK_LLM === 'true' || Platform.OS === 'web') {
+      console.log('[MOCK LLM] Initializing lightweight mock LLM service');
+      this.context = {
+        completion: async () => ({
+          text: "Hello! I am your AI PEER exercise assistant running in offline local mode. For balance exercises like Knee Bends and Single Leg Stands, remember to keep a stable support nearby, look straight ahead, and move at a controlled pace."
+        }),
+        release: async () => {
+          this.context = null;
+        }
+      };
       return;
     }
 

@@ -14,6 +14,7 @@ COPY middleware/ ./middleware/
 COPY routes/ ./routes/
 COPY services/ ./services/
 COPY controllers/ ./controllers/
+COPY mock-assets/ ./mock-assets/
 
 USER appuser
 ENV PORT=8080

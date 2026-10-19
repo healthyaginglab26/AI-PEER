@@ -1,66 +1,84 @@
-//this file handles all GCS operations for video retrieval
-//generates HIPAAA compliant signed URLs with expiration
+// services/GCS_Service.js
+// Handles GCS operations for video and model retrieval
+// In production: generates HIPAA-compliant signed URLs with expiration
+// In local dev without GCP keys: serves local static mock assets
 
-//imports the installed google library
-//import signblob
-const{Storage}=require('@google-cloud/storage')
-const {IAMCredentialsClient}=require('@google-cloud/iam-credentials').v1; 
+const { Storage } = require('@google-cloud/storage');
+const { IAMCredentialsClient } = require('@google-cloud/iam-credentials').v1;
 
-//initialize GCS client
-//uses explicit credentials locally (from .env), or default credentials on Cloud Run
-const storageConfig = {
-    projectId: process.env.GCS_PROJECT_ID
-};
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.K_SERVICE;
+const isCloudRun = !!process.env.K_SERVICE;
 
-//only add explicit credentials if running locally with env vars
-if (process.env.GCS_PRIVATE_KEY) {
-    storageConfig.credentials = {
-        client_email: process.env.GCS_CLIENT_EMAIL,
-        private_key: process.env.GCS_PRIVATE_KEY.replace(/\\n/g, '\n')
+// initialize GCS client only if credentials exist or in cloud run
+let storage = null;
+if (process.env.GCS_PRIVATE_KEY || isCloudRun) {
+    const storageConfig = {
+        projectId: process.env.GCS_PROJECT_ID
     };
+
+    if (process.env.GCS_PRIVATE_KEY) {
+        storageConfig.credentials = {
+            client_email: process.env.GCS_CLIENT_EMAIL,
+            private_key: process.env.GCS_PRIVATE_KEY.replace(/\\n/g, '\n')
+        };
+    }
+
+    try {
+        storage = new Storage(storageConfig);
+    } catch (e) {
+        console.warn('[STORAGE] GCS Storage initialization warning:', e.message);
+    }
 }
 
-const storage = new Storage(storageConfig);
-
-//get the bucket where videos are stored-where videos are actually stored
-const bucketName=process.env.GCS_BUCKET_NAME;
-
-//service account email - needed for both local and Cloud Run
+// bucket where videos are stored
+const bucketName = process.env.GCS_BUCKET_NAME || 'aipeer_videos';
 const clientEmail = process.env.GCS_CLIENT_EMAIL;
 
-//check if we're running on Cloud Run (no private key available)
-const isCloudRun = !process.env.GCS_PRIVATE_KEY;
-
-//initialize IAM client for Cloud Run signing (only when needed)
+// initialize IAM client for Cloud Run signing (only when needed)
 let iamClient;
-if (isCloudRun) {
+if (isCloudRun && !process.env.GCS_PRIVATE_KEY) {
     iamClient = new IAMCredentialsClient();
 }
 
-//function to generate the signed URL for a video
-//takes the filename as input
-//use async because it needs to communicate with GCS
-async function generateSignedUrl(videoFileName, overrideBucket){
-    try{
-        //reference to specific file in bucket
-        //overrideBucket allows using a different bucket (e.g. model bucket)
+/**
+ * Generate signed URL for a video or model file.
+ * Falls back to local static mock assets in development mode.
+ */
+async function generateSignedUrl(videoFileName, overrideBucket) {
+    // 1. Zero-Credential Local Development Fallback
+    if (!process.env.GCS_PRIVATE_KEY && !isCloudRun) {
+        if (isProduction) {
+            throw new Error('SECURITY_VIOLATION: Missing GCS credentials in production environment.');
+        }
+
+        const host = process.env.LOCAL_API_HOST || `http://localhost:${process.env.PORT || 8080}`;
+        if (overrideBucket && overrideBucket === process.env.GCS_MODEL_BUCKET) {
+            console.log(`[MOCK GCS] Serving local dummy model asset: ${videoFileName}`);
+            return `${host}/mock-assets/dummy-qwen.gguf`;
+        }
+
+        console.log(`[MOCK GCS] Serving local mock exercise video asset: ${videoFileName}`);
+        return `${host}/mock-assets/sample-exercise.mp4`;
+    }
+
+    // 2. Production / Cloud Run GCS Signed URL Flow
+    try {
+        if (!storage) {
+            throw new Error('Google Cloud Storage client is not initialized.');
+        }
+
         const targetBucket = overrideBucket || bucketName;
-        const file=storage.bucket(targetBucket).file(videoFileName);
+        const file = storage.bucket(targetBucket).file(videoFileName);
 
-
-        //config for the signed URL
-        const options={
-            version:'v4',
-            action:'read',
-            //1 hour from now
-            expires: Date.now()+60*60*1000//sec, minute, millisec
+        const options = {
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 60 * 60 * 1000 // 1 hour
         };
 
-        //on Cloud Run: use IAM signBlob instead of local private key
-        if (isCloudRun) {
+        if (isCloudRun && !process.env.GCS_PRIVATE_KEY) {
             options.credentials = {
                 client_email: clientEmail,
-                //custom sign function - calls IAM API to sign remotely
                 sign: async (stringToSign) => {
                     const [response] = await iamClient.signBlob({
                         name: `projects/-/serviceAccounts/${clientEmail}`,
@@ -71,14 +89,12 @@ async function generateSignedUrl(videoFileName, overrideBucket){
             };
         }
 
-        //generate and return the signed URL
-        const[signedURL]=await file.getSignedUrl(options);
+        const [signedURL] = await file.getSignedUrl(options);
         return signedURL;
-    }
-    catch(error){
-        console.error('Error generating signed URL:',error);
+    } catch (error) {
+        console.error('Error generating signed URL:', error);
         throw new Error('Cannot generate the video URL');
     }
 }
-//video_template .js will use this so need to export it
-module.exports={generateSignedUrl};
+
+module.exports = { generateSignedUrl };

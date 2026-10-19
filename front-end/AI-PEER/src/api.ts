@@ -1,7 +1,19 @@
-// src/api.ts
+import { Platform } from "react-native";
 
-// Base URL (from .env or fallback to Cloud Run production)
-const BASE = process.env.EXPO_PUBLIC_API_BASE_URL || "https://aipeer-api-596437694331.us-central1.run.app";
+function getBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    let url = process.env.EXPO_PUBLIC_API_BASE_URL;
+    // When running in an Android emulator, localhost refers to the emulator itself.
+    // Automatically rewrite localhost to 10.0.2.2 (Android host loopback)
+    if (Platform.OS === "android" && url.includes("localhost")) {
+      url = url.replace("localhost", "10.0.2.2");
+    }
+    return url;
+  }
+  return "https://aipeer-api-596437694331.us-central1.run.app";
+}
+
+const BASE = getBaseUrl();
 
 // Reusable JSON fetch helper (single definition)
 async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {

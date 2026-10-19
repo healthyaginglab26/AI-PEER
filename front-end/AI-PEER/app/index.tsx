@@ -91,6 +91,19 @@ export default function Login() {
     }
   };
 
+  const onDevFastLogin = async () => {
+    setErr(null);
+    setLoading(true);
+    try {
+      await api.sendCode("15555555555", "password123", "login");
+      router.replace("/verify?phone=15555555555&mode=login");
+    } catch (e: any) {
+      setErr(e.message || "Dev fast login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const switch_clearPages = async () => {
     setIsCreating(!isCreating);
     setShowPw(false);
@@ -228,6 +241,16 @@ export default function Login() {
             <TouchableOpacity onPress={() => switch_clearPages()} style={s.switchWrap}>
               <Text style={s.switchText}>{t("login.dontHaveAccount")}</Text>
             </TouchableOpacity>
+
+            {__DEV__ && (
+              <TouchableOpacity
+                style={[s.loginBtn, { backgroundColor: "#0284c7", marginTop: spacing(4) }]}
+                onPress={onDevFastLogin}
+                disabled={loading}
+              >
+                <Text style={s.loginTxt}>⚡ Dev Fast Login (John Senior)</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
