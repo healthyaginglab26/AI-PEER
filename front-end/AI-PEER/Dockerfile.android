@@ -50,8 +50,9 @@ RUN yes | sdkmanager --licenses > /dev/null 2>&1 && \
         "ndk;26.1.10909125" \
         "cmake;3.22.1"
 
-# 6. Configure Gradle memory limits to prevent daemon OOMs
-ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\""
+# 6. Configure Gradle memory and concurrency limits to prevent daemon OOMs and CPU thrashing
+ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=\"-Xmx3072m -XX:MaxMetaspaceSize=1024m\" -Dorg.gradle.workers.max=2"
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2
 
 WORKDIR /app
 
@@ -60,5 +61,5 @@ WORKDIR /app
 # /output       -> mapped to build-output on host
 # /root/.gradle -> persistent volume for Gradle cache
 
-# Default build command: installs dependencies if needed, builds assembleDebug, and copies APK to /output
-CMD ["bash", "-c", "npm ci && cd android && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a && mkdir -p /output && cp app/build/outputs/apk/debug/app-debug.apk /output/app-debug.apk && echo 'Build complete: /output/app-debug.apk'"]
+# Default build command: installs dependencies if needed, ensures debug.keystore exists, builds assembleDebug, and copies APK to /output
+CMD ["bash", "-c", "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && npm ci && cd android && sed -i 's/\\r$//' gradlew && chmod +x gradlew && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --max-workers=2 && mkdir -p /output && cp app/build/outputs/apk/debug/app-debug.apk /output/app-debug.apk && echo 'Build complete: /output/app-debug.apk'"]

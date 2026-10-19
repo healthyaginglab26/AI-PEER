@@ -62,15 +62,13 @@ if ($BuildType -eq "release") {
 }
 
 Write-Host "==> Running compilation task '$GradleTask' inside container..." -ForegroundColor Green
-docker compose run --rm android-builder bash -c "
-  set -e
-  npm ci
-  cd android
-  ./gradlew $GradleTask -PreactNativeArchitectures=arm64-v8a
-  mkdir -p /output
-  cp $ApkPath /output/$(Split-Path -Leaf $OutApk)
-  echo '===> Successfully copied APK to host output directory.'
-"
+$ContainerCmd = "set -e && if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && npm ci && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew $GradleTask -PreactNativeArchitectures=arm64-v8a --max-workers=2 && mkdir -p /output && cp $ApkPath /output/$(Split-Path -Leaf $OutApk) && echo '===> Successfully copied APK to host output directory.'"
+
+docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=2 android-builder bash -c "$ContainerCmd"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Docker compilation failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  BUILD SUCCESSFUL!" -ForegroundColor Green

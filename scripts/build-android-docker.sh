@@ -52,13 +52,18 @@ else
 fi
 
 echo "==> Running compilation task '$GRADLE_TASK' inside container..."
-docker compose run --rm android-builder bash -c "
+docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=2 android-builder bash -c "
   set -e
+  if [ ! -f android/app/debug.keystore ]; then
+    keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
+  fi
   npm ci
   cd android
-  ./gradlew $GRADLE_TASK -PreactNativeArchitectures=arm64-v8a
+  sed -i 's/\r$//' gradlew
+  chmod +x gradlew
+  ./gradlew $GRADLE_TASK -PreactNativeArchitectures=arm64-v8a --max-workers=2
   mkdir -p /output
-  cp $APK_PATH /output/$(basename "$OUT_APK")
+  cp $APK_PATH /output/\$(basename \"\$OUT_APK\")
   echo '===> Successfully copied APK to host output directory.'
 "
 

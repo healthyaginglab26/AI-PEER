@@ -25,7 +25,7 @@ To clone and run AI-PEER, you only need two core tools installed on your host ma
 ### Step 1: Clone Repository & Configure Secrets
 
 ```bash
-git clone https://github.com/TAvital04/AI-PEER.git
+git clone https://github.com/healthyaginglab26/AI-PEER.git
 cd AI-PEER
 ```
 
@@ -185,28 +185,38 @@ failed to connect to the docker API at ...
 ```
 - **Solution:** Ensure Docker Desktop is launched and running in your taskbar / menu bar before running `docker compose` or build scripts.
 
-### 2. Gradle Out-Of-Memory (OOM) during container compilation
-```
-Fail to run Gradle Worker Daemon / OutOfMemoryError
-```
-- **Cause:** CMake compiling native C++ libraries (`VisionCamera`, `llama.rn`, `reanimated`) in parallel can exhaust memory if Docker has low limits.
-- **Solution:** Open Docker Desktop Settings &rarr; **Resources** &rarr; increase RAM allocation to **6 GB or 8 GB**. The container is preconfigured with `-Xmx4096m` heap caps.
+### 2. Gradle Out-Of-Memory (OOM) / WSL2 Freezes during native C++ compilation
+- **Cause:** Compiling native C++ libraries (`llama.rn`, `VisionCamera`, `reanimated`) on high-core CPUs can spawn many parallel Clang processes, exhausting host WSL2 memory.
+- **Solution & Built-in Protection:**
+  - AI-PEER enforces `CMAKE_BUILD_PARALLEL_LEVEL=2` and Gradle `--max-workers=2` / `-Dorg.gradle.workers.max=2` by default to cap concurrency.
+  - In Docker Desktop, ensure at least **4 GB to 6 GB** of memory is allocated (*Settings → Resources → Advanced*).
 
-### 3. Port `8080` already in use
-- **Solution:** Check what is listening on port 8080 or change the port in `API/.env`:
-  ```bash
-  PORT=3000
+### 3. Missing `debug.keystore` Error (`validateSigningDebug FAILED`)
+- **Cause:** Android Gradle requires a debug keystore to sign the debug APK, but `*.keystore` files are ignored in `.gitignore`.
+- **Solution:** Both `build-android-docker.ps1` and `build-android-docker.sh` automatically detect if `debug.keystore` is missing and generate one via `keytool` before invoking Gradle.
+
+### 4. Port `8080` already allocated
+- **Symptom:** `Bind for 0.0.0.0:8080 failed: port is already allocated` (common if running Postgres, Adminer, or another web service).
+- **Solution:** Override the host port at runtime without editing code:
+  - **PowerShell:** `$env:PORT="8085"; docker compose up -d api`
+  - **Bash / Linux / macOS:** `PORT=8085 docker compose up -d api`
+  - Or permanently change `PORT=8085` in `API/.env`.
+
+### 5. Windows PowerShell Execution Policy Restrictions
+- **Symptom:** `File ...build-android-docker.ps1 cannot be loaded because running scripts is disabled on this system.`
+- **Solution:** Run with the bypass flag:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\scripts\build-android-docker.ps1
   ```
-  Then restart via `docker compose up -d api`.
 
-### 4. Rebuilding containers without cache
+### 6. Rebuilding containers without cache
 If dependencies in `package.json` or Dockerfiles change:
 ```bash
 docker compose build --no-cache api
 docker compose build --no-cache android-builder
 ```
 
-### 5. Cleaning Gradle cache volume
+### 7. Cleaning Gradle cache volume
 If you need to reset the persistent Gradle volume:
 ```bash
 docker volume rm aipeer-gradle-cache
