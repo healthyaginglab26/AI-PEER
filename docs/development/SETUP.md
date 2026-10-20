@@ -50,7 +50,7 @@ cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env
 | `GCS_BUCKET_NAME` | Storage bucket for exercise demo videos | `aipeer_videos` |
 | `GCS_MODEL_BUCKET` | Storage bucket for fine-tuned LLM model | `qwenfinetune` |
 | `IDENTITY_PLATFORM_API_KEY` | Identity Platform API key for SMS 2FA | Firebase Console → General |
-| `PORT` | Listening port for Express API | `8080` (or `3000`) |
+| `PORT` | Container internal listening port for Express API | `8080` (mapped to host `8085` by default) |
 | `NODE_ENV` | Runtime environment | `development` |
 
 **Mobile Frontend (`front-end/AI-PEER/.env`):**
@@ -58,13 +58,13 @@ cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env
 |---|---|---|
 | `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase Web API key | Firebase Console |
 | `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | Firebase Console |
-| `EXPO_PUBLIC_API_BASE_URL` | Local API URL for development | Default: `http://localhost:8080` *(use LAN IP when testing on physical phone)* |
+| `EXPO_PUBLIC_API_BASE_URL` | Local API URL for development | Default: `http://localhost:8085` *(matches docker-compose default; use `http://10.0.2.2:8085` in Android Emulator)* |
 
 ---
 
-### Step 2: Spin Up Backend API (Dockerized)
+### Step 2: Spin Up Backend API
 
-The Express API is containerized using `API/Dockerfile` and managed via Docker Compose:
+The Express API is containerized using `API/Dockerfile` and managed via Docker Compose (mapped to host port **8085** by default to prevent conflicts with other services on 8080 and Expo Metro on 8081):
 
 ```bash
 # Start API backend in the background
@@ -74,7 +74,13 @@ docker compose up -d api
 Verify that the backend is running and healthy:
 
 ```bash
-curl http://localhost:8080/health
+# On macOS / Linux / Git Bash:
+curl http://localhost:8085/health
+
+# On Windows PowerShell:
+curl.exe http://localhost:8085/health
+# Or: Invoke-RestMethod http://localhost:8085/health
+
 # Expected response: {"status":"OK","message":"AI PEER API is running"}
 ```
 
@@ -90,7 +96,7 @@ docker compose stop api
 
 ---
 
-### Step 3: Compile Android Mobile App (Containerized)
+### Step 3: Compile Android Mobile App
 
 No Android Studio, Java JDK, or Android SDK installations are required on your host machine. The containerized builder (`Dockerfile.android`) encapsulates OpenJDK 17, Android SDK platforms 34/35, NDK 26.1, CMake 3.22, and all required tools.
 
@@ -195,12 +201,16 @@ failed to connect to the docker API at ...
 - **Cause:** Android Gradle requires a debug keystore to sign the debug APK, but `*.keystore` files are ignored in `.gitignore`.
 - **Solution:** Both `build-android-docker.ps1` and `build-android-docker.sh` automatically detect if `debug.keystore` is missing and generate one via `keytool` before invoking Gradle.
 
-### 4. Port `8080` already allocated
-- **Symptom:** `Bind for 0.0.0.0:8080 failed: port is already allocated` (common if running Postgres, Adminer, or another web service).
-- **Solution:** Override the host port at runtime without editing code:
-  - **PowerShell:** `$env:PORT="8085"; docker compose up -d api`
-  - **Bash / Linux / macOS:** `PORT=8085 docker compose up -d api`
-  - Or permanently change `PORT=8085` in `API/.env`.
+### 4. Port Conflict (`8080` or `8085` already allocated)
+- **Symptom:** `Bind for 0.0.0.0:8085 failed: port is already allocated` (or `8080` if overridden).
+- **Default Port Behavior:** `docker-compose.yml` binds host port **`8085`** to container port `8080` by default (`"${PORT:-8085}:8080"`) to avoid common conflicts with other local databases on 8080 and Expo's Metro Bundler on 8081.
+- **How to Override the Host Port:**
+  > [!NOTE]
+  > Docker Compose evaluates `${PORT}` from your host terminal environment or a root-level `.env` file (`AI-PEER/.env`), **not** from `API/.env`.
+  - **PowerShell (Terminal):** `$env:PORT="8086"; docker compose up -d api`
+  - **Bash / macOS / Linux (Terminal):** `PORT=8086 docker compose up -d api`
+  - **Permanent Root `.env`:** Create `AI-PEER/.env` with `PORT=8086`.
+  - **Update Mobile Frontend:** Remember to update `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to match the chosen host port (e.g., `http://localhost:8086`).
 
 ### 5. Windows PowerShell Execution Policy Restrictions
 - **Symptom:** `File ...build-android-docker.ps1 cannot be loaded because running scripts is disabled on this system.`
