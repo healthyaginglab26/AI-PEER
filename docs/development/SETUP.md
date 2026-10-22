@@ -149,6 +149,7 @@ Connect your Android phone with USB debugging enabled, then run:
 adb install -r build-output/app-release.apk
 adb shell am start -n com.anonymous.aipeer/.MainActivity
 ```
+**DO NOT USE THE RECOMMENDATION MADE BY THE CONTAINER**
 
 The app will launch immediately and run completely offline on your device without needing Node.js or Metro running on your PC.
 
