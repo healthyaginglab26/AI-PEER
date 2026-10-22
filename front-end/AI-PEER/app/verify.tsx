@@ -16,7 +16,8 @@ export default function Verify() {
   const { phone, mode } = useLocalSearchParams();
   const { colors, scaled } = usePrefs();
   const s = useMemo(() => createStyles(colors, scaled), [colors, scaled]);
-  const isDevTestNumber = __DEV__ && typeof phone === 'string' && (phone.endsWith('5555') || phone === '15555555555');
+  const isDev = __DEV__ || process.env.EXPO_PUBLIC_USE_EMULATOR === "true" || process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN === "true";
+  const isDevTestNumber = isDev && typeof phone === 'string' && (phone.endsWith('5555') || phone === '15555555555');
   const [code, setCode] = useState(isDevTestNumber ? "123456" : "");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);

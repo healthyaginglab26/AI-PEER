@@ -39,9 +39,9 @@ services:
       - GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=1024m" -Dorg.gradle.workers.max=2
       - REACT_NATIVE_ARCHITECTURES=arm64-v8a
       - CMAKE_BUILD_PARALLEL_LEVEL=2
-    # Default command builds debug APK and copies to mounted /output directory
+    # Default command builds standalone release APK (with embedded JS bundle) and copies to mounted /output directory
     command: >
-      bash -c "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && npm ci && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --max-workers=2 && mkdir -p /output && cp app/build/outputs/apk/debug/app-debug.apk /output/app-debug.apk && echo '===> Build successful! APK ready at build-output/app-debug.apk'"
+      bash -c "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && npm ci && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=2 && mkdir -p /output && cp app/build/outputs/apk/release/app-release.apk /output/app-release.apk && echo '===> Build successful! APK ready at build-output/app-release.apk'"
 
 volumes:
   gradle-cache:

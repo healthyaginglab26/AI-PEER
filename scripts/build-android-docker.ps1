@@ -4,19 +4,28 @@
 
 .DESCRIPTION
   Builds the Android builder Docker container and compiles the React Native APK,
-  saving the output to build-output/app-debug.apk without requiring local JDK or Android SDK.
+  saving the output to build-output/app-release.apk without requiring local JDK or Android SDK.
 
 .PARAMETER BuildType
-  Specifies 'debug' (default) or 'release'.
+  Specifies 'release' (default, standalone APK with embedded JS) or 'debug' (requires live Metro).
+
+.PARAMETER Install
+  Automatically sideloads the compiled APK to a connected Android phone via ADB and launches the app.
+
+.PARAMETER Launch
+  Alias for -Install; sideloads and opens the app immediately on the phone.
 
 .EXAMPLE
   .\scripts\build-android-docker.ps1
-  .\scripts\build-android-docker.ps1 -BuildType release
+  .\scripts\build-android-docker.ps1 -Install
+  .\scripts\build-android-docker.ps1 -BuildType debug -Install
 #>
 
 param (
-    [ValidateSet("debug", "release")]
-    [string]$BuildType = "debug"
+    [ValidateSet("release", "debug")]
+    [string]$BuildType = "release",
+    [switch]$Install,
+    [switch]$Launch
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,11 +61,11 @@ Write-Host "==> Building Android builder Docker image..." -ForegroundColor Green
 docker compose build android-builder
 
 if ($BuildType -eq "release") {
-    $GradleTask = "assembleRelease"
+    $GradleTask = ":app:assembleRelease"
     $ApkPath = "app/build/outputs/apk/release/app-release.apk"
     $OutApk = Join-Path $OutputDir "app-release.apk"
 } else {
-    $GradleTask = "assembleDebug"
+    $GradleTask = ":app:assembleDebug"
     $ApkPath = "app/build/outputs/apk/debug/app-debug.apk"
     $OutApk = Join-Path $OutputDir "app-debug.apk"
 }
@@ -73,7 +82,40 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  BUILD SUCCESSFUL!" -ForegroundColor Green
 Write-Host "  APK location: $OutApk" -ForegroundColor White
-Write-Host ""
-Write-Host "  To install on a connected Android phone:" -ForegroundColor Yellow
-Write-Host "    adb install -r `"$OutApk`"" -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
+
+if ($Install -or $Launch) {
+    Write-Host ""
+    Write-Host "==> Checking for connected Android phone via ADB..." -ForegroundColor Cyan
+    if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
+        Write-Warning "'adb' command not found on PATH. Please install Android Platform Tools to enable auto-installation."
+        Write-Host "  Manual install: adb install -r `"$OutApk`"" -ForegroundColor Yellow
+    } else {
+        $devices = adb devices | Select-String -Pattern "\bdevice\b"
+        if (-not $devices) {
+            Write-Warning "No authorized Android device detected by 'adb devices'. Please ensure your phone is connected with USB debugging enabled."
+            Write-Host "  Once connected, run: adb install -r `"$OutApk`"" -ForegroundColor Yellow
+        } else {
+            Write-Host "==> Configuring reverse port proxy (8085 -> host)..." -ForegroundColor Green
+            adb reverse tcp:8085 tcp:8085
+            if ($BuildType -eq "debug") {
+                adb reverse tcp:8081 tcp:8081
+            }
+
+            Write-Host "==> Sideloading APK ($OutApk)..." -ForegroundColor Green
+            adb install -r "$OutApk"
+
+            Write-Host "==> Launching AI-PEER on phone..." -ForegroundColor Green
+            adb shell am start -n com.anonymous.aipeer/.MainActivity
+
+            Write-Host ""
+            Write-Host "  SUCCESS: AI-PEER is installed and running on your device!" -ForegroundColor Green
+        }
+    }
+} else {
+    Write-Host ""
+    Write-Host "  To install on a connected Android phone:" -ForegroundColor Yellow
+    Write-Host "    adb install -r `"$OutApk`"" -ForegroundColor Yellow
+    Write-Host "  Or re-run with auto-install:" -ForegroundColor DarkGray
+    Write-Host "    .\scripts\build-android-docker.ps1 -Install" -ForegroundColor DarkGray
+}

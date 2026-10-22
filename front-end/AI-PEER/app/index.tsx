@@ -3,10 +3,15 @@ import { useRouter } from "expo-router";
 import { useState, useEffect, useMemo } from "react";
 import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { signInWithCustomToken } from "firebase/auth";
+import { auth } from "../src/firebaseClient";
+import { setRefreshToken } from "../src/auth/tokenStore";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { usePrefs } from "../src/prefs-context";
 import { type ContrastPalette, scaleFontSizes, radii, spacing } from "../src/theme";
+
+const isDev = __DEV__ || process.env.EXPO_PUBLIC_USE_EMULATOR === "true" || process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN === "true";
 
 function normalizePhone(input: string) {
   // keep digits only; backend can decide final validation
@@ -91,17 +96,30 @@ export default function Login() {
     }
   };
 
-  const onDevFastLogin = async () => {
+  const onDevSkipLogin = async () => {
     setErr(null);
     setLoading(true);
     try {
+      // 1. Send dev verification code
       await api.sendCode("15555555555", "password123", "login");
-      router.replace("/verify?phone=15555555555&mode=login");
+      // 2. Automatically verify mock code 123456
+      const res = await api.verify("15555555555", "123456");
+      // 3. Authenticate with Firebase & persist refresh token
+      await signInWithCustomToken(auth, res.customToken);
+      await setRefreshToken(res.refreshToken);
+      // 4. Navigate directly into the app
+      router.replace("/(tabs)");
     } catch (e: any) {
       setErr(e.message || "Dev fast login failed");
     } finally {
       setLoading(false);
     }
+  };
+
+  const onFillTestCredentials = () => {
+    setPhone("(555) 555-5555");
+    setPassword("password123");
+    setErr(null);
   };
 
   const switch_clearPages = async () => {
@@ -242,14 +260,24 @@ export default function Login() {
               <Text style={s.switchText}>{t("login.dontHaveAccount")}</Text>
             </TouchableOpacity>
 
-            {__DEV__ && (
-              <TouchableOpacity
-                style={[s.loginBtn, { backgroundColor: "#0284c7", marginTop: spacing(4) }]}
-                onPress={onDevFastLogin}
-                disabled={loading}
-              >
-                <Text style={s.loginTxt}>⚡ Dev Fast Login (John Senior)</Text>
-              </TouchableOpacity>
+            {isDev && (
+              <View style={{ marginTop: spacing(4), gap: spacing(2) }}>
+                <TouchableOpacity
+                  style={[s.loginBtn, { backgroundColor: "#0284c7", marginTop: 0 }]}
+                  onPress={onDevSkipLogin}
+                  disabled={loading}
+                >
+                  <Text style={s.loginTxt}>⚡ Use Default Test Login (Skip)</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.loginBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.accent, marginTop: 0 }]}
+                  onPress={onFillTestCredentials}
+                  disabled={loading}
+                >
+                  <Text style={[s.loginTxt, { color: colors.accent }]}>📝 Fill Test Credentials</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}

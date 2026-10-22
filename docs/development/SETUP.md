@@ -1,4 +1,4 @@
-# AI-PEER Developer Setup Guide
+# AI-PEER Developer (Local) Setup Guide
 
 Welcome to the AI-PEER development setup guide. AI-PEER adopts a **Docker-first, zero-host-install** development approach. You do not need to install local runtimes (Node.js, OpenJDK 17, Android SDK tools, Gradle, or C++ compilers) on your host operating system to run backend services or compile Android test APKs.
 
@@ -39,7 +39,9 @@ cp API/.env.example API/.env
 cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env
 ```
 
-#### Key Environment Variables
+### Key Environment Variables
+
+**These only ever need to be modified if you are starting for production.**
 
 **API Backend (`API/.env`):**
 | Variable | Description | Source / Default |
@@ -58,7 +60,8 @@ cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env
 |---|---|---|
 | `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase Web API key | Firebase Console |
 | `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | Firebase Console |
-| `EXPO_PUBLIC_API_BASE_URL` | Local API URL for development | Default: `http://localhost:8085` *(matches docker-compose default; use `http://10.0.2.2:8085` in Android Emulator)* |
+| `EXPO_PUBLIC_API_BASE_URL` | Local API URL for development | Default: `http://localhost:8085` *(matches docker-compose default; use `http://10.0.2.2:8085` in Android Emulator; use `http://localhost:8085` with `adb reverse tcp:8085 tcp:8085` or your PC's local Wi-Fi IP for physical devices)* |
+| `EXPO_PUBLIC_ENABLE_TEST_LOGIN` | Enables 1-click test login buttons on local builds | `true` |
 
 ---
 
@@ -89,7 +92,7 @@ View live server logs:
 docker compose logs -f api
 ```
 
-Stop the API:
+Stop the API (when you're done):
 ```bash
 docker compose stop api
 ```
@@ -102,35 +105,67 @@ No Android Studio, Java JDK, or Android SDK installations are required on your h
 
 #### On Windows (PowerShell):
 ```powershell
+# Standard release build:
 .\scripts\build-android-docker.ps1
+
+# Build AND automatically install + reverse port + launch on connected phone:
+.\scripts\build-android-docker.ps1 -Install
+
+# Live-development debug build (requires Metro for hot-reloading). Recommended if you are writing frontend end and want to see the UI change as you press save:
+.\scripts\build-android-docker.ps1 -BuildType debug -Install
 ```
-*(To produce a release APK: `.\scripts\build-android-docker.ps1 -BuildType release`)*
 
 #### On macOS / Linux / Git Bash:
 ```bash
+# Standard release build:
 ./scripts/build-android-docker.sh
+
+# Build AND automatically install + reverse port + launch on connected phone:
+./scripts/build-android-docker.sh --install
+
+# Live-development debug build (requires Metro for hot-reloading). Recommended if you are writing frontend end and want to see the UI change as you press save:
+./scripts/build-android-docker.sh debug --install
 ```
-*(To produce a release APK: `./scripts/build-android-docker.sh release`)*
 
 #### Or Direct Docker Compose Command:
 ```bash
 docker compose run --rm android-builder
 ```
+**Unless something specifically prompts you to use this one, don't.**
 
 #### What Happens During the Build:
 1. Docker builds the compilation container and caches it locally.
 2. Source files and Gradle dependencies are mounted into the container.
-3. Gradle wrapper executes `assembleDebug` with `arm64-v8a` native architecture.
-4. The compiled APK is automatically saved to your host workspace at:
+3. Gradle wrapper executes `assembleRelease` with `arm64-v8a` native architecture.
+4. The JavaScript bundle is automatically compiled and embedded directly inside the APK, signed with the debug keystore.
+5. The compiled standalone APK is automatically saved to your host workspace at:
    ```
-   build-output/app-debug.apk
+   build-output/app-release.apk
    ```
 
-#### Installing on a Test Device:
+#### Installing and Launching on a Test Device:
 Connect your Android phone with USB debugging enabled, then run:
 ```bash
-adb install -r build-output/app-debug.apk
+adb install -r build-output/app-release.apk
+adb shell am start -n com.anonymous.aipeer/.MainActivity
 ```
+
+The app will launch immediately and run completely offline on your device without needing Node.js or Metro running on your PC.
+
+> [!TIP]
+> **Connecting a Physical Android Phone to the Local Backend API:**
+> On a physical device, `http://localhost:8085` looks for an API running on the phone itself, not your PC.
+> - **USB Connection (Recommended):** If your phone is plugged in via USB, forward port `8085` once:
+>   ```powershell
+>   adb reverse tcp:8085 tcp:8085
+>   ```
+> - **Wi-Fi Connection:** In `front-end/AI-PEER/.env`, update `EXPO_PUBLIC_API_BASE_URL` to your PC's local network IP address (e.g. `http://192.168.1.X:8085`) before building the APK.
+
+> [!NOTE]
+> **Local Testing Login Options:**
+> When opening the app on a local test build, you will see two developer buttons below the login form:
+> - **`⚡ Use Default Test Login (Skip)`**: Bypasses the SMS verification screen completely, logging you straight into the dashboard as the pre-seeded patient (John Senior).
+> - **`📝 Fill Test Credentials`**: Fills in the mock credentials (`5555555555` / `password123`) so you can test the form manually.
 
 ---
 
@@ -231,3 +266,26 @@ If you need to reset the persistent Gradle volume:
 ```bash
 docker volume rm aipeer-gradle-cache
 ```
+
+### 8. "Unable to load script" Red Screen on Android
+- **Cause:** You installed `app-debug.apk` instead of `app-release.apk`. Debug APKs do not embed the JavaScript bundle and expect to load code dynamically from a local Metro dev server (`localhost:8081`).
+- **Solution (Standalone Testing - Least Overhead):** Build and install the default release APK:
+  ```powershell
+  .\scripts\build-android-docker.ps1
+  adb install -r build-output/app-release.apk
+  ```
+- **Solution (Live Metro Development):** If you specifically want hot-reloading with a debug build, you need Node.js installed on your host:
+  ```powershell
+  adb reverse tcp:8081 tcp:8081
+  cd front-end/AI-PEER
+  npx expo start
+  ```
+
+### 9. "Network request failed" or Login Timeout on Physical Android Phone
+- **Cause:** When the app runs on a physical device, `http://localhost:8085` connects to loopback on the phone itself, not the Docker container running on your host computer.
+- **Solution (USB Connected):** Forward port 8085 from the host machine to your device:
+  ```powershell
+  adb reverse tcp:8085 tcp:8085
+  ```
+- **Solution (Wi-Fi):** Set `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to your host computer's local Wi-Fi IP (e.g., `http://192.168.1.150:8085`), then recompile the APK with `.\scripts\build-android-docker.ps1`.
+
