@@ -131,6 +131,7 @@ Connect your Android phone with USB debugging enabled, then run:
 ```bash
 adb install -r build-output/app-debug.apk
 ```
+**DO NOT USE THE RECOMMENDATION MADE BY THE CONTAINER**
 
 ---
 
