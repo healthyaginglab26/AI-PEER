@@ -376,4 +376,183 @@ router.post('/refresh', async(req, res)=>{
     }
 });
 
+// ---------------------------------------------------------------------------
+// Client-side phone verification (Firebase native SDK + Play Integrity).
+//
+// Google now rejects SMS requests sent from this server without app
+// verification (MISSING_CLIENT_IDENTIFIER), so /send-code + /verify no longer
+// work. In the new flow the app sends and confirms the SMS itself with the
+// Firebase native SDK, then proves it owns the number here with a Firebase ID
+// token. /send-code and /verify are left in place so older builds don't break.
+// ---------------------------------------------------------------------------
+
+// A phone ID token older than this is rejected (seconds since SMS sign-in)
+const PHONE_TOKEN_MAX_AGE_SECONDS = 5 * 60;
+
+// Firestore stores the digits the user typed (usually 10). Match both the
+// 10-digit and the 11-digit (leading 1) forms of a US number.
+function phoneLookupForms(e164){
+    const digits=(e164||'').replace(/\D/g,'');
+    const ten=(digits.length===11 && digits.startsWith('1')) ? digits.slice(1) : digits;
+    return {ten, forms: Array.from(new Set([ten, `1${ten}`]))};
+}
+
+async function issueSessionTokens(userId){
+    const now=new Date();
+    const customToken=await createCustomToken(userId);
+    const refreshToken=crypto.randomUUID();
+    const refreshExpiresAt=new Date(now.getTime() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+    await db.collection('refreshTokens').add({
+        token: refreshToken,
+        userId,
+        createdAt: admin.firestore.Timestamp.fromDate(now),
+        expiresAt: admin.firestore.Timestamp.fromDate(refreshExpiresAt)
+    });
+    return {customToken, refreshToken};
+}
+
+/**
+ * POST /auth/check-credentials
+ * Validates phone + password BEFORE the app sends an SMS, so a wrong password
+ * doesn't cost a text. Sends nothing and creates nothing.
+ * Body: { phone, password, mode: "login" | "create" }
+ */
+router.post('/check-credentials', async(req, res)=>{
+    try {
+        const {phone, password, mode} = req.body;
+        const phoneNumber = normalizePhone(phone);
+
+        if (phoneNumber.length < 10) {
+            return res.status(400).json({error: 'Phone must be at least 10 digits.'});
+        }
+        if (!password || password.length < 6) {
+            return res.status(400).json({error: 'Password must be at least 6 characters.'});
+        }
+        if (mode !== 'login' && mode !== 'create') {
+            return res.status(400).json({error: 'Mode must be "login" or "create".'});
+        }
+
+        const {forms} = phoneLookupForms(phoneNumber);
+        const existing = await db.collection('users').where('phoneNumber', 'in', forms).limit(1).get();
+
+        if (mode === 'login') {
+            if (existing.empty) {
+                return res.status(401).json({error: 'Invalid phone or password.'});
+            }
+            const valid = await bcrypt.compare(password, existing.docs[0].data().passwordHash || '');
+            if (!valid) {
+                return res.status(401).json({error: 'Invalid phone or password.'});
+            }
+        } else if (!existing.empty && existing.docs[0].data().phoneVerified === true) {
+            // Unverified leftovers from the old flow can be reclaimed in /phone-login
+            return res.status(409).json({error: 'Phone number is already used.'});
+        }
+
+        res.status(200).json({success: true});
+    } catch(error) {
+        console.error('Check credentials error:', error);
+        res.status(500).json({error: 'Could not check credentials.'});
+    }
+});
+
+/**
+ * POST /auth/phone-login
+ * Finishes login/sign-up after the app verified the phone with Firebase.
+ * The user is only created here, after the phone is proven, so a failed
+ * SMS can no longer leave a half-created account behind.
+ * Body: { idToken, password, mode: "login" | "create", btrackScore? }
+ * Returns the same shape as /verify.
+ */
+router.post('/phone-login', async(req, res)=>{
+    try {
+        const {idToken, password, mode, btrackScore} = req.body;
+
+        if (!idToken || typeof idToken !== 'string') {
+            return res.status(400).json({error: 'idToken is required.'});
+        }
+        if (!password || password.length < 6) {
+            return res.status(400).json({error: 'Password must be at least 6 characters.'});
+        }
+        if (mode !== 'login' && mode !== 'create') {
+            return res.status(400).json({error: 'Mode must be "login" or "create".'});
+        }
+
+        // Prove the caller just verified this phone number with Firebase
+        let decoded;
+        try {
+            decoded = await admin.auth().verifyIdToken(idToken, true);
+        } catch(e) {
+            return res.status(401).json({error: 'Phone verification expired. Please request a new code.'});
+        }
+        if (decoded.firebase?.sign_in_provider !== 'phone' || !decoded.phone_number) {
+            return res.status(401).json({error: 'Phone verification failed.'});
+        }
+        if (Date.now() / 1000 - decoded.auth_time > PHONE_TOKEN_MAX_AGE_SECONDS) {
+            return res.status(401).json({error: 'Phone verification expired. Please request a new code.'});
+        }
+
+        const {ten, forms} = phoneLookupForms(decoded.phone_number);
+        const existing = await db.collection('users').where('phoneNumber', 'in', forms).limit(1).get();
+        const nowIso = new Date().toISOString();
+        let userId;
+        let isNewUser = false;
+
+        if (mode === 'login') {
+            if (existing.empty) {
+                return res.status(401).json({error: 'Invalid phone or password.'});
+            }
+            const userDoc = existing.docs[0];
+            const valid = await bcrypt.compare(password, userDoc.data().passwordHash || '');
+            if (!valid) {
+                return res.status(401).json({error: 'Invalid phone or password.'});
+            }
+            userId = userDoc.id;
+            await userDoc.ref.update({phoneVerified: true, lastVerifiedAt: nowIso});
+        } else {
+            const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+            if (!existing.empty) {
+                const userDoc = existing.docs[0];
+                if (userDoc.data().phoneVerified === true) {
+                    return res.status(409).json({error: 'Phone number is already used.'});
+                }
+                // Reclaim an unverified account left behind by the old flow.
+                // Safe: the caller has just proven they own this number.
+                const updates = {passwordHash, phoneVerified: true, lastVerifiedAt: nowIso};
+                if (typeof btrackScore === 'number') updates.btrack_score = btrackScore;
+                await userDoc.ref.update(updates);
+                userId = userDoc.id;
+            } else {
+                const newUser = await db.collection('users').add({
+                    phoneNumber: ten,
+                    passwordHash,
+                    phoneVerified: true,
+                    lastVerifiedAt: nowIso,
+                    createdAt: nowIso,
+                    btrack_score: typeof btrackScore === 'number' ? btrackScore : null,
+                    fear_falling_score: null
+                });
+                userId = newUser.id;
+            }
+            isNewUser = true;
+        }
+
+        const {customToken, refreshToken} = await issueSessionTokens(userId);
+
+        // The app's real identity is the custom-token user (Firestore doc id).
+        // Remove the temporary phone-auth user so phone numbers don't pile up
+        // in Firebase Auth. Best effort.
+        if (decoded.uid !== userId) {
+            admin.auth().deleteUser(decoded.uid).catch(e =>
+                console.warn('[AUDIT] Could not remove temporary phone user:', e.message));
+        }
+
+        console.log(`[AUDIT] Phone login successful: userId=${userId}, mode=${mode}, phone=XXXX${ten.slice(-4)}`);
+
+        res.status(200).json({success: true, customToken, refreshToken, userId, isNewUser});
+    } catch(error) {
+        console.error('Phone login error:', error);
+        res.status(500).json({error: 'Login failed.'});
+    }
+});
+
 module.exports=router;
