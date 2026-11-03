@@ -61,6 +61,25 @@ export const api = {
       body: JSON.stringify({ phone, code }),
     }),
 
+  // Phone verification via the Firebase native SDK (see src/auth/phoneVerification.ts)
+  checkCredentials: (phone: string, password: string, mode: "login" | "create") =>
+    requestJSON<{ success: boolean }>("/auth/check-credentials", {
+      method: "POST",
+      body: JSON.stringify({ phone, password, mode }),
+    }),
+
+  phoneLogin: (idToken: string, password: string, mode: "login" | "create", btrackScore?: number) =>
+    requestJSON<{
+      success: boolean;
+      customToken: string;
+      refreshToken: string;
+      userId: string;
+      isNewUser: boolean;
+    }>("/auth/phone-login", {
+      method: "POST",
+      body: JSON.stringify({ idToken, password, mode, ...(btrackScore != null && { btrackScore }) }),
+    }),
+
   refresh: (refreshToken: string) =>
     requestJSON<{ success: boolean; customToken: string; userId: string }>(
       "/auth/refresh",
