@@ -419,7 +419,7 @@ async function issueSessionTokens(userId){
  */
 router.post('/check-credentials', async(req, res)=>{
     try {
-        const {phone, password, mode} = req.body;
+        const {phone, password, mode} = req.body || {};
         const phoneNumber = normalizePhone(phone);
 
         if (phoneNumber.length < 10) {
@@ -465,7 +465,7 @@ router.post('/check-credentials', async(req, res)=>{
  */
 router.post('/phone-login', async(req, res)=>{
     try {
-        const {idToken, password, mode, btrackScore} = req.body;
+        const {idToken, password, mode, btrackScore} = req.body || {};
 
         if (!idToken || typeof idToken !== 'string') {
             return res.status(400).json({error: 'idToken is required.'});
@@ -477,17 +477,25 @@ router.post('/phone-login', async(req, res)=>{
             return res.status(400).json({error: 'Mode must be "login" or "create".'});
         }
 
-        // Prove the caller just verified this phone number with Firebase
+        // Prove the caller just verified this phone number with Firebase.
+        // No revocation check (verifyIdToken's second argument): it needs
+        // Firebase Auth admin rights the Cloud Run service account doesn't
+        // have, and the 5-minute auth_time limit below already rejects stale
+        // tokens.
         let decoded;
         try {
-            decoded = await admin.auth().verifyIdToken(idToken, true);
+            decoded = await admin.auth().verifyIdToken(idToken);
         } catch(e) {
+            console.error('[AUDIT] phone-login rejected: invalid ID token:', e.code || e.message);
             return res.status(401).json({error: 'Phone verification expired. Please request a new code.'});
         }
         if (decoded.firebase?.sign_in_provider !== 'phone' || !decoded.phone_number) {
+            console.error('[AUDIT] phone-login rejected: not a phone sign-in:', decoded.firebase?.sign_in_provider);
             return res.status(401).json({error: 'Phone verification failed.'});
         }
-        if (Date.now() / 1000 - decoded.auth_time > PHONE_TOKEN_MAX_AGE_SECONDS) {
+        const tokenAgeSeconds = Math.round(Date.now() / 1000 - decoded.auth_time);
+        if (tokenAgeSeconds > PHONE_TOKEN_MAX_AGE_SECONDS) {
+            console.error(`[AUDIT] phone-login rejected: phone sign-in is ${tokenAgeSeconds}s old`);
             return res.status(401).json({error: 'Phone verification expired. Please request a new code.'});
         }
 
