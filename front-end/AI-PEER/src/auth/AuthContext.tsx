@@ -10,10 +10,34 @@ type AuthContextType = {
     loading: boolean;
     login: (phone: string, password: string) => Promise<void>;
     register: (phone: string, password: string) => Promise<{ userId: string }>;
+    signInWithToken: (customToken: string) => Promise<void>;
     logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+/** Build a lightweight mock Firebase User object when running in zero-credential local mock mode */
+function buildMockFirebaseUser(customToken: string): User {
+    const uid = customToken.replace("mock-custom-token-", "") || "mock-user-john-senior";
+    return {
+        uid,
+        email: "mock-user@aipeer.local",
+        phoneNumber: "+15555555555",
+        displayName: "John Senior",
+        emailVerified: true,
+        isAnonymous: false,
+        metadata: {},
+        providerData: [],
+        refreshToken: "",
+        tenantId: null,
+        delete: async () => {},
+        getIdToken: async () => customToken,
+        getIdTokenResult: async () => ({} as any),
+        reload: async () => {},
+        toJSON: () => ({ uid }),
+        providerId: "custom",
+    } as unknown as User;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
@@ -41,13 +65,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const res = await api.refresh(refreshToken);
 
                 console.log('[Auth] Got fresh custom token, signing into Firebase...');
-                const cred = await signInWithCustomToken(auth, res.customToken);
+                if (res.customToken.startsWith('mock-custom-token-')) {
+                    const mockUser = buildMockFirebaseUser(res.customToken);
+                    if (!cancelled) {
+                        setUser(mockUser);
+                        setToken(res.customToken);
+                        console.log('[Auth] Mock session restored successfully');
+                    }
+                } else {
+                    const cred = await signInWithCustomToken(auth, res.customToken);
 
-                if (!cancelled) {
-                    const idToken = await cred.user.getIdToken();
-                    setUser(cred.user);
-                    setToken(idToken);
-                    console.log('[Auth] Session restored successfully');
+                    if (!cancelled) {
+                        const idToken = await cred.user.getIdToken();
+                        setUser(cred.user);
+                        setToken(idToken);
+                        console.log('[Auth] Session restored successfully');
+                    }
                 }
             } catch (e: any) {
                 console.log('[Auth] Refresh failed:', e.message || e);
@@ -70,9 +103,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(firebaseUser);
                 const idToken = await firebaseUser.getIdToken();
                 setToken(idToken);
-            } else {
-                setUser(null);
-                setToken(null);
             }
         });
 
@@ -82,9 +112,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
     }, []);
 
+    const signInWithToken = async (customToken: string): Promise<void> => {
+        if (customToken.startsWith('mock-custom-token-')) {
+            const mockUser = buildMockFirebaseUser(customToken);
+            setUser(mockUser);
+            setToken(customToken);
+            return;
+        }
+        const cred = await signInWithCustomToken(auth, customToken);
+        const idToken = await cred.user.getIdToken();
+        setUser(cred.user);
+        setToken(idToken);
+    };
+
     const login = async (phone: string, password: string): Promise<void> => {
         const response = await api.login(phone, password);
-        await signInWithCustomToken(auth, response.customToken);
+        await signInWithToken(response.customToken);
     };
 
     const register = async (phone: string, password: string): Promise<{ userId: string }> => {
@@ -95,11 +138,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = async (): Promise<void> => {
         console.log('[Auth] Logging out, clearing refresh token...');
         await clearRefreshToken();
-        await signOut(auth);
+        setUser(null);
+        setToken(null);
+        try {
+            await signOut(auth);
+        } catch {}
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+        <AuthContext.Provider value={{ user, token, loading, login, register, signInWithToken, logout }}>
             {children}
         </AuthContext.Provider>
     );

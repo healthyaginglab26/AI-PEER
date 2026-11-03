@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE } from "./api";
 import { auth } from "./firebaseClient";
+import { getRefreshToken } from "./auth/tokenStore";
 
 const EXERCISE_ACTIVITY_KEY = "exercise_activity_records_v1";
 const MAX_RECORDS = 1000;
@@ -257,7 +258,14 @@ export async function submitActivityToBackend(
   record: ExerciseCompletionRecord
 ): Promise<boolean> {
   try {
-    const freshToken = await auth.currentUser?.getIdToken(true);
+    let freshToken = await auth.currentUser?.getIdToken(true);
+    if (!freshToken) {
+      // Fallback for offline/zero-credential local dev mode where a mock token is used
+      const refreshToken = await getRefreshToken();
+      if (refreshToken) {
+        freshToken = "mock-custom-token-mock-user-john-senior";
+      }
+    }
     if (!freshToken) {
       console.warn(
         "[ActivityStorage] No authenticated user; skipping backend submit"

@@ -99,43 +99,92 @@ docker compose stop api
 
 ---
 
-### Step 3: Compile Android Mobile App
+### Step 3: Choose Your Frontend Mode (Pick What Fits Your Task!)
 
-No Android Studio, Java JDK, or Android SDK installations are required on your host machine. The containerized builder (`Dockerfile.android`) encapsulates OpenJDK 17, Android SDK platforms 34/35, NDK 26.1, CMake 3.22, and all required tools.
+You do **not** need to wait for a full Android APK compilation just to test UI, login, API routes, or chat screens. Choose one of the **3 development modes** below based on what you are working on:
 
-#### On Windows (PowerShell):
+| Mode | Best For... | Wait Time | Hardware Needed |
+|---|---|---|---|
+| **Mode 1: Web / Mock Mode** *(Recommended for 80% of tasks)* | UI screens, login/2FA (`verify.tsx`), API integration, questionnaires, translations, and AI Chat UI layout (uses built-in Mock LLM) | **~5 seconds** (Instant hot-reload) | Any PC browser (`http://localhost:8081`) — **No phone required** |
+| **Mode 2: Live Dev APK** *(Build Once, Instant Reload)* | Testing real on-device `llama.rn` LLM changes or `VisionCamera` pose tracking while actively editing `.ts`/`.tsx` files | **~10 mins once**, then **1 second** per save | Android Phone + USB Cable |
+| **Mode 3: Standalone Release APK** | Final QA testing, clinical demos, or running the app unplugged from your computer | **~12 mins** first build, **~2–3 mins** cached rebuilds | Android Phone |
+
+---
+
+#### ⚡ Mode 1: Web / Mock Mode (5-Second Startup — Zero Android Compile)
+
+If you are working on screens, navigation, backend API calls, Firebase Auth, or AI Chat UI, run the web container (or local Expo web). It automatically enables `EXPO_PUBLIC_MOCK_LLM=true` so you can test the AI Chat screen immediately without downloading the 1.2 GB model or compiling C++:
+
+```bash
+# Start the web dev server in Docker (zero Node.js install needed on host):
+docker compose up -d web
+
+# View logs / wait until Metro says "Waiting on http://localhost:8081":
+docker compose logs -f web
+```
+Then open **`http://localhost:8081`** in your browser! Every time you press Save in VS Code, the browser updates in 1 second.
+*(If you already have Node.js installed locally, you can also just run `cd front-end/AI-PEER && npx expo start --web`).*
+
+---
+
+#### 🔄 Mode 2: Live-Reloading Android Dev Build (Compile Once, Edit Instantly)
+
+If you need the real phone camera (`VisionCamera`) or real 1.2 GB `llama.rn` model on your Android phone, **do not rebuild the APK after every code change.** Build the `debug` APK **once**, then stream live JavaScript updates over USB:
+
+**1. Build & install the Debug APK once:**
+```powershell
+# Windows (PowerShell):
+.\scripts\build-android-docker.ps1 -BuildType debug -Install
+
+# macOS / Linux / Git Bash:
+./scripts/build-android-docker.sh debug --install
+```
+
+**2. Start the Metro live-reload server:**
+```powershell
+# Forward Metro port (8081) and API port (8085) to your USB-connected phone:
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:8085 tcp:8085
+
+# Start Metro (via Docker or local Node.js):
+docker compose up web
+# OR locally: cd front-end/AI-PEER && npx expo start
+```
+Now, whenever you edit any `.tsx` or `.ts` file (like `ai-chat.tsx` or `systemPrompt.ts`) and press Save, your phone updates in **1–2 seconds** without ever running Docker Android compilation again!
+
+---
+
+#### 📦 Mode 3: Standalone Release APK (Self-Contained, Runs Unplugged)
+
+No Android Studio, Java JDK, or Android SDK installations are required on your host machine. The containerized builder (`Dockerfile.android`) encapsulates OpenJDK 17, Android SDK platforms 34/35, Build Tools 34/35, NDK 26.1 & 27.0, CMake 3.22, and caches `node_modules` and C++ `.cxx` objects in fast Linux volumes.
+
+##### On Windows (PowerShell):
 ```powershell
 # Standard release build:
 .\scripts\build-android-docker.ps1
 
 # Build AND automatically install + reverse port + launch on connected phone:
 .\scripts\build-android-docker.ps1 -Install
-
-# Live-development debug build (requires Metro for hot-reloading). Recommended if you are writing frontend end and want to see the UI change as you press save:
-.\scripts\build-android-docker.ps1 -BuildType debug -Install
 ```
 
-#### On macOS / Linux / Git Bash:
+##### On macOS / Linux / Git Bash:
 ```bash
 # Standard release build:
 ./scripts/build-android-docker.sh
 
 # Build AND automatically install + reverse port + launch on connected phone:
 ./scripts/build-android-docker.sh --install
-
-# Live-development debug build (requires Metro for hot-reloading). Recommended if you are writing frontend end and want to see the UI change as you press save:
-./scripts/build-android-docker.sh debug --install
 ```
 
-#### Or Direct Docker Compose Command:
+##### Or Direct Docker Compose Command:
 ```bash
 docker compose run --rm android-builder
 ```
 **Unless something specifically prompts you to use this one, don't.**
 
-#### What Happens During the Build:
+##### What Happens During the Build:
 1. Docker builds the compilation container and caches it locally.
-2. Source files and Gradle dependencies are mounted into the container.
+2. Source files are mounted, while `node_modules`, Gradle caches, and C++ `.cxx` build outputs are persisted in fast Linux Docker volumes (`aipeer-node-modules-cache`, `aipeer-gradle-cache`, `aipeer-android-cxx-cache`) so subsequent builds only take a few minutes.
 3. Gradle wrapper executes `assembleRelease` with `arm64-v8a` native architecture.
 4. The JavaScript bundle is automatically compiled and embedded directly inside the APK, signed with the debug keystore.
 5. The compiled standalone APK is automatically saved to your host workspace at:
@@ -262,10 +311,10 @@ docker compose build --no-cache api
 docker compose build --no-cache android-builder
 ```
 
-### 7. Cleaning Gradle cache volume
-If you need to reset the persistent Gradle volume:
+### 7. Cleaning Gradle / Node / C++ cache volumes
+If you change native dependencies in `package.json` and need to reset the persistent Docker build volumes:
 ```bash
-docker volume rm aipeer-gradle-cache
+docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
 ```
 
 ### 8. "Unable to load script" Red Screen on Android

@@ -71,9 +71,9 @@ if ($BuildType -eq "release") {
 }
 
 Write-Host "==> Running compilation task '$GradleTask' inside container..." -ForegroundColor Green
-$ContainerCmd = "set -e && if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && npm ci && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew $GradleTask -PreactNativeArchitectures=arm64-v8a --max-workers=2 && mkdir -p /output && cp $ApkPath /output/$(Split-Path -Leaf $OutApk) && echo '===> Successfully copied APK to host output directory.'"
+$ContainerCmd = "set -e && if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ]; then echo '==> Installing npm dependencies (first-time volume setup)...' && npm ci --prefer-offline --no-audit; else echo '==> Using cached node_modules volume (skipping npm ci)...'; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew $GradleTask -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp $ApkPath /output/$(Split-Path -Leaf $OutApk) && echo '===> Successfully copied APK to host output directory.'"
 
-docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=2 android-builder bash -c "$ContainerCmd"
+docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=4 android-builder bash -c "$ContainerCmd"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Docker compilation failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE

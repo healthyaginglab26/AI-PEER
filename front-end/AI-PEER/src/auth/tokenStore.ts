@@ -6,12 +6,17 @@
 // getRefreshToken() one-shot migration below keeps existing users signed
 // in across the upgrade: first run after update moves the legacy value into
 // SecureStore and wipes it from AsyncStorage.
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const KEY = "refreshToken";
 
 export async function getRefreshToken(): Promise<string | null> {
+    if (Platform.OS === "web") {
+        return await AsyncStorage.getItem(KEY);
+    }
+
     const secure = await SecureStore.getItemAsync(KEY);
     if (secure) return secure;
 
@@ -25,13 +30,18 @@ export async function getRefreshToken(): Promise<string | null> {
 }
 
 export async function setRefreshToken(value: string): Promise<void> {
+    if (Platform.OS === "web") {
+        await AsyncStorage.setItem(KEY, value);
+        return;
+    }
     await SecureStore.setItemAsync(KEY, value);
 }
 
 export async function clearRefreshToken(): Promise<void> {
-    await SecureStore.deleteItemAsync(KEY);
-    // belt-and-suspenders during the rollout window: wipe the legacy
-    // AsyncStorage copy on every clear so nothing lingers even if the
-    // migration read path wasn't exercised for this user.
+    if (Platform.OS !== "web") {
+        await SecureStore.deleteItemAsync(KEY);
+    }
+    // belt-and-suspenders during the rollout window (and primary store on web):
+    // wipe the AsyncStorage copy on every clear.
     await AsyncStorage.removeItem(KEY);
 }

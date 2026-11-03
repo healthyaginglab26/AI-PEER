@@ -367,8 +367,9 @@ router.post('/refresh', async(req, res)=>{
         const tokenDoc = snap.docs[0];
         const tokenData = tokenDoc.data();
 
-        // Check expiry
-        if (tokenData.expiresAt.toDate() < new Date()) {
+        // Check expiry (supports both Firestore Timestamp and in-memory Mock Date/ISO string)
+        const refreshExpiry = tokenData.expiresAt?.toDate ? tokenData.expiresAt.toDate() : new Date(tokenData.expiresAt);
+        if (refreshExpiry < new Date()) {
             await tokenDoc.ref.delete();
             return res.status(401).json({error: 'Refresh token expired.'});
         }

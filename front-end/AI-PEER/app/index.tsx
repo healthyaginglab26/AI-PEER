@@ -21,7 +21,7 @@ function normalizePhone(input: string) {
 export default function Login() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signInWithToken } = useAuth();
   const { colors, scaled } = usePrefs();
   const s = useMemo(() => createStyles(colors, scaled), [colors, scaled]);
 
@@ -104,8 +104,8 @@ export default function Login() {
       await api.sendCode("15555555555", "password123", "login");
       // 2. Automatically verify mock code 123456
       const res = await api.verify("15555555555", "123456");
-      // 3. Authenticate with Firebase & persist refresh token
-      await signInWithCustomToken(auth, res.customToken);
+      // 3. Authenticate (supports both real Firebase custom JWTs and offline mock tokens) & persist refresh token
+      await signInWithToken(res.customToken);
       await setRefreshToken(res.refreshToken);
       // 4. Navigate directly into the app
       router.replace("/(tabs)");

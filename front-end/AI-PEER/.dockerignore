@@ -1,6 +1,7 @@
-# Ignore local build artifacts and caches when building Docker images
+# Ignore local build artifacts, secrets, and large model files when building Docker images
 node_modules/
 android/app/build/
+android/app/.cxx/
 android/.gradle/
 android/build/
 ios/
@@ -12,3 +13,8 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.env
+.env.*
+!.env.example
+*.gguf
+*.apk

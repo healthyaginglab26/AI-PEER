@@ -65,16 +65,21 @@ else
 fi
 
 echo "==> Running compilation task '$GRADLE_TASK' inside container..."
-docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=2 android-builder bash -c "
+docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=4 android-builder bash -c "
   set -e
   if [ ! -f android/app/debug.keystore ]; then
     keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
   fi
-  npm ci
+  if [ ! -d node_modules/react-native ]; then
+    echo '==> Installing npm dependencies (first-time volume setup)...'
+    npm ci --prefer-offline --no-audit
+  else
+    echo '==> Using cached node_modules volume (skipping npm ci)...'
+  fi
   cd android
   sed -i 's/\r$//' gradlew
   chmod +x gradlew
-  ./gradlew $GRADLE_TASK -PreactNativeArchitectures=arm64-v8a --max-workers=2
+  ./gradlew $GRADLE_TASK -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4
   mkdir -p /output
   cp $APK_PATH /output/\$(basename \"\$OUT_APK\")
   echo '===> Successfully copied APK to host output directory.'

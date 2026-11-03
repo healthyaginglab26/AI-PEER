@@ -1,11 +1,14 @@
 import { Platform } from "react-native";
+import * as Device from "expo-device";
 
 function getBaseUrl(): string {
   if (process.env.EXPO_PUBLIC_API_BASE_URL) {
     let url = process.env.EXPO_PUBLIC_API_BASE_URL;
-    // When running in an Android emulator, localhost refers to the emulator itself.
-    // Automatically rewrite localhost to 10.0.2.2 (Android host loopback)
-    if (Platform.OS === "android" && url.includes("localhost")) {
+    // When running in an Android emulator (not a physical USB-connected phone),
+    // localhost refers to the emulator itself. Rewrite localhost to 10.0.2.2
+    // ONLY on emulators so physical devices using `adb reverse tcp:8085 tcp:8085`
+    // keep connecting to localhost:8085.
+    if (Platform.OS === "android" && !Device.isDevice && url.includes("localhost")) {
       url = url.replace("localhost", "10.0.2.2");
     }
     return url;
