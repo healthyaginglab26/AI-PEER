@@ -105,7 +105,7 @@ You do **not** need to wait for a full Android APK compilation just to test UI, 
 
 | Mode | Best For... | Wait Time | Hardware Needed |
 |---|---|---|---|
-| **Mode 1: Web / Mock Mode** *(Recommended for 80% of tasks)* | UI screens, login/2FA (`verify.tsx`), API integration, questionnaires, translations, and AI Chat UI layout (uses built-in Mock LLM) | **~5 seconds** (Instant hot-reload) | Any PC browser (`http://localhost:8081`) — **No phone required** |
+| **Mode 1: Web / Mock Mode** *(Recommended for 80% of tasks)* | UI screens, login/2FA (`verify.tsx`), API integration, questionnaires, translations, and AI Chat UI layout (uses built-in Mock LLM) | **~5 seconds** after the first build (Instant hot-reload) | Any PC browser (`http://localhost:8081`) — **No phone required** |
 | **Mode 2: Live Dev APK** *(Build Once, Instant Reload)* | Testing real on-device `llama.rn` LLM changes or `VisionCamera` pose tracking while actively editing `.ts`/`.tsx` files | **~10 mins once**, then **1 second** per save | Android Phone + USB Cable |
 | **Mode 3: Standalone Release APK** | Final QA testing, clinical demos, or running the app unplugged from your computer | **~12 mins** first build, **~2–3 mins** cached rebuilds | Android Phone |
 
