@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Override the Docker bridge IP (172.18.0.x) detected by Gradle during containerized builds
+         so physical devices using `adb reverse tcp:8081 tcp:8081` connect to localhost:8081 -->
+    <string name="react_native_dev_server_ip" translatable="false" tools:override="true">localhost</string>
+</resources>
+

@@ -2,6 +2,7 @@ package com.anonymous.aipeer
 
 import android.app.Application
 import android.content.res.Configuration
+import android.preference.PreferenceManager
 
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
@@ -43,6 +44,17 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // When app-debug.apk is compiled inside a Docker container, Gradle bakes the
+    // container's internal bridge IP (172.x.x.x) into react_native_dev_server_ip.
+    // Force debug_http_host to localhost:8081 so USB devices using `adb reverse`
+    // always reach Metro on the host PC.
+    if (BuildConfig.DEBUG) {
+      val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+      val currentHost = prefs.getString("debug_http_host", null)
+      if (currentHost.isNullOrBlank() || currentHost.startsWith("172.")) {
+        prefs.edit().putString("debug_http_host", "localhost:8081").apply()
+      }
+    }
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {

@@ -1,4 +1,3 @@
-
 //server.js serves as the main() like in other languages
 //basically ties everything together to function in the backend
 
@@ -40,7 +39,8 @@ app.use('/auth', authRoutes);
 const path = require('path');
 const ALLOWED_MOCK_ASSETS = new Set([
     'sample-exercise.mp4',
-    'dummy-qwen.gguf'
+    'dummy-qwen.gguf',
+    'Qwen3.5-2B-aipeer-Q4_K_M.gguf'
 ]);
 
 app.get('/mock-assets/:filename', (req, res) => {

@@ -13,9 +13,14 @@ services:
     ports:
       - "${PORT:-8085}:8080"
     volumes:
-      # Mount backend source so code edits reload immediately without rebuilding the image
-      - ./API:/app
-      - api-node-modules:/app/node_modules
+      # Mount backend code directories/files individually so /app/node_modules in the image is never overwritten
+      - ./API/server.js:/app/server.js
+      - ./API/config:/app/config
+      - ./API/controllers:/app/controllers
+      - ./API/middleware:/app/middleware
+      - ./API/routes:/app/routes
+      - ./API/services:/app/services
+      - ./API/mock-assets:/app/mock-assets
     env_file:
       - path: ./API/.env
         required: false
@@ -23,10 +28,10 @@ services:
       - NODE_ENV=development
       - PORT=8080
       - LOCAL_API_HOST=http://localhost:${PORT:-8085}
-    command: node --watch server.js
+    command: ["node", "--watch", "server.js"]
 
   # =========================================================================
-  # 2. Web / Mock UI Server (5-Second Instant Reload in Browser)
+  # 2. Web / Mock UI & Metro Live-Reload Server (Port 8081)
   # =========================================================================
   web:
     image: node:24-bookworm
@@ -38,12 +43,16 @@ services:
       - ./front-end/AI-PEER:/app
       - node-modules-cache:/app/node_modules
     environment:
-      - EXPO_PUBLIC_MOCK_LLM=true
+      # Web (Mode 1) automatically uses Mock LLM via Platform.OS === 'web';
+      # keeping EXPO_PUBLIC_MOCK_LLM=false lets Android (Mode 2) run the real on-device Qwen3.5-2B model!
+      - EXPO_PUBLIC_MOCK_LLM=false
       - EXPO_PUBLIC_ENABLE_TEST_LOGIN=true
       - EXPO_PUBLIC_API_BASE_URL=http://localhost:${PORT:-8085}
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
       - CI=false
     command: >
-      bash -c "if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && npx expo start --web --port 8081"
+      bash -c "if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && npx expo start --web --clear --port 8081"
 
   # =========================================================================
   # 3. Android App Compilation Container (React Native / Expo bare)
@@ -73,8 +82,6 @@ services:
       bash -c "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp app/build/outputs/apk/release/app-release.apk /output/app-release.apk && echo '===> Build successful! APK ready at build-output/app-release.apk'"
 
 volumes:
-  api-node-modules:
-    name: aipeer-api-node-modules
   gradle-cache:
     name: aipeer-gradle-cache
   node-modules-cache:

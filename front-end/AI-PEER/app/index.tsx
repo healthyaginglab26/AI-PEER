@@ -1,7 +1,7 @@
 // app/index.tsx
 import { useRouter } from "expo-router";
 import { useState, useEffect, useMemo } from "react";
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { signInWithCustomToken } from "firebase/auth";
 import { auth } from "../src/firebaseClient";
@@ -40,26 +40,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
- /* const onSubmit = async () => {
-    setErr(null);
-    const p = normalizePhone(phone);
-    if (p.length < 10) return setErr("Enter a valid phone number (10+ digits).");
-    if (password.length < 6) return setErr("Password must be at least 6 characters.");
-    
-   
-    try {
-      setLoading(true);
-      const res = await api.login(p, password);
-      // store token for later requests
-      try { await AsyncStorage.setItem("token", res.token); } catch {}
-      router.replace("/(tabs)"); // go to the app after login
-    } catch (e: any) {
-      setErr("Invalid phone or password");
-    } finally {
-      setLoading(false);
-    }
-  };
- */
   const onLogin = async () => {
     setErr(null);
     const p = normalizePhone(phone);
@@ -141,9 +121,9 @@ export default function Login() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={spacing(6)}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={spacing(6)}>
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View style={s.wrap}>
+      <ScrollView contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled">
         <Text style={s.brand}>AI PEER</Text>
         <Text style={s.subtitle}>{isCreating ? t("login.createAccount") : t("login.signInToContinue")}</Text>
 
@@ -281,7 +261,7 @@ export default function Login() {
             )}
           </View>
         )}
-      </View>
+      </ScrollView>
     </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
@@ -292,7 +272,7 @@ const createStyles = (
   scaled: ReturnType<typeof scaleFontSizes>
 ) =>
 StyleSheet.create({
-  wrap: { flex: 1, padding: spacing(6), backgroundColor: colors.background, justifyContent: "center" },
+  wrap: { flexGrow: 1, padding: spacing(6), backgroundColor: colors.background, justifyContent: "center" },
   brand: { fontSize: scaled.h1, fontWeight: "800", color: colors.accent, textAlign: "center" },
   subtitle: { fontSize: scaled.small, color: colors.text, textAlign: "center", marginTop: spacing(1), marginBottom: spacing(3) },
 

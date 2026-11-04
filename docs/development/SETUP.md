@@ -92,9 +92,13 @@ View live server logs:
 docker compose logs -f api
 ```
 
-Stop the API (when you're done):
+Stop or reset the API:
 ```bash
+# Pause/stop API container:
 docker compose stop api
+
+# Rebuild & restart API container (after changing API/package.json or API/Dockerfile):
+docker compose up -d --build --force-recreate api
 ```
 
 ---
@@ -116,14 +120,30 @@ You do **not** need to wait for a full Android APK compilation just to test UI, 
 If you are working on screens, navigation, backend API calls, Firebase Auth, or AI Chat UI, run the web container (or local Expo web). It automatically enables `EXPO_PUBLIC_MOCK_LLM=true` so you can test the AI Chat screen immediately without downloading the 1.2 GB model or compiling C++:
 
 ```bash
-# Start the web dev server in Docker (zero Node.js install needed on host):
-docker compose up -d web
+# Start both the API and Web dev server in Docker (zero Node.js install needed on host):
+docker compose up -d api web
 
 # View logs / wait until Metro says "Waiting on http://localhost:8081":
 docker compose logs -f web
 ```
 Then open **`http://localhost:8081`** in your browser! Every time you press Save in VS Code, the browser updates in 1 second.
 *(If you already have Node.js installed locally, you can also just run `cd front-end/AI-PEER && npx expo start --web`).*
+
+##### Mode 1 — Stop, Clear Cache & Reset Commands:
+```bash
+# Stop Mode 1 (keeps containers & cached node_modules intact for next time):
+docker compose stop web api
+
+# Restart Web & clear Metro bundler cache (use after changing metro.config.js or .env):
+docker compose exec web npx expo start --web --clear --port 8081
+# (Or recreate the containers cleanly):
+docker compose up -d --force-recreate api web
+
+# Full Reset for Mode 1 (removes web/api containers AND wipes cached frontend node_modules):
+docker compose rm -f -s web api
+docker volume rm aipeer-node-modules-cache
+docker compose up -d --build api web
+```
 
 ---
 
@@ -146,11 +166,30 @@ If you need the real phone camera (`VisionCamera`) or real 1.2 GB `llama.rn` mod
 adb reverse tcp:8081 tcp:8081
 adb reverse tcp:8085 tcp:8085
 
-# Start Metro (via Docker or local Node.js):
-docker compose up web
+# Start API + Metro (via Docker):
+docker compose up -d api web
 # OR locally: cd front-end/AI-PEER && npx expo start
 ```
 Now, whenever you edit any `.tsx` or `.ts` file (like `ai-chat.tsx` or `systemPrompt.ts`) and press Save, your phone updates in **1–2 seconds** without ever running Docker Android compilation again!
+
+##### Mode 2 — Stop, Clear Cache & Reset Commands:
+```powershell
+# Stop the Metro & API servers when finished for the day:
+docker compose stop web api
+
+# Clear USB port-forwarding rules on your phone (optional):
+adb reverse --remove-all
+
+# Soft Reset (clear Metro JS bundle cache if phone shows stale JS):
+docker compose restart web
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:8085 tcp:8085
+
+# Full Native Reset (only needed if you add/change native Android packages in package.json):
+docker compose down
+docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
+.\scripts\build-android-docker.ps1 -BuildType debug -Install
+```
 
 ---
 
@@ -182,9 +221,22 @@ docker compose run --rm android-builder
 ```
 **Unless something specifically prompts you to use this one, don't.**
 
+##### Mode 3 — Stop & Reset Commands:
+```powershell
+# Stop an in-progress Android build (or stop all running containers):
+docker compose stop
+
+# Full Reset of Android Build Caches (wipes Gradle, C++ .cxx, build outputs, and node_modules volumes):
+docker compose down
+docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
+
+# Rebuild the Android Builder Docker image from scratch (if Dockerfile.android changed):
+docker compose build --no-cache android-builder
+```
+
 ##### What Happens During the Build:
 1. Docker builds the compilation container and caches it locally.
-2. Source files are mounted, while `node_modules`, Gradle caches, and C++ `.cxx` build outputs are persisted in fast Linux Docker volumes (`aipeer-node-modules-cache`, `aipeer-gradle-cache`, `aipeer-android-cxx-cache`) so subsequent builds only take a few minutes.
+2. Source files are mounted, while `node_modules`, Gradle caches, and C++ `.cxx` build outputs are persisted in fast Linux Docker volumes (`aipeer-node-modules-cache`, `aipeer-gradle-cache`, `aipeer-android-cxx-cache`, `aipeer-android-build-cache`) so subsequent builds only take a few minutes.
 3. Gradle wrapper executes `assembleRelease` with `arm64-v8a` native architecture.
 4. The JavaScript bundle is automatically compiled and embedded directly inside the APK, signed with the debug keystore.
 5. The compiled standalone APK is automatically saved to your host workspace at:
@@ -279,7 +331,7 @@ failed to connect to the docker API at ...
 ### 2. Gradle Out-Of-Memory (OOM) / WSL2 Freezes during native C++ compilation
 - **Cause:** Compiling native C++ libraries (`llama.rn`, `VisionCamera`, `reanimated`) on high-core CPUs can spawn many parallel Clang processes, exhausting host WSL2 memory.
 - **Solution & Built-in Protection:**
-  - AI-PEER enforces `CMAKE_BUILD_PARALLEL_LEVEL=2` and Gradle `--max-workers=2` / `-Dorg.gradle.workers.max=2` by default to cap concurrency.
+  - AI-PEER enforces `CMAKE_BUILD_PARALLEL_LEVEL=4` and Gradle `--max-workers=4` / `-Dorg.gradle.workers.max=4` by default to balance speed and memory usage.
   - In Docker Desktop, ensure at least **4 GB to 6 GB** of memory is allocated (*Settings → Resources → Advanced*).
 
 ### 3. Missing `debug.keystore` Error (`validateSigningDebug FAILED`)
@@ -311,8 +363,12 @@ docker compose build --no-cache api
 docker compose build --no-cache android-builder
 ```
 
-### 7. Cleaning Gradle / Node / C++ cache volumes
-If you change native dependencies in `package.json` and need to reset the persistent Docker build volumes:
+### 7. Cleaning Gradle / Node / C++ cache volumes (Nuclear Reset)
+If you change native dependencies in `package.json` and need to reset all persistent Docker containers and build volumes from scratch:
+```bash
+docker compose down -v
+```
+*(Or to remove specific named cache volumes individually):*
 ```bash
 docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
 ```
@@ -324,11 +380,10 @@ docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cx
   .\scripts\build-android-docker.ps1
   adb install -r build-output/app-release.apk
   ```
-- **Solution (Live Metro Development):** If you specifically want hot-reloading with a debug build, you need Node.js installed on your host:
+- **Solution (Live Metro Development):** Forward port 8081 and start the `web` Metro container:
   ```powershell
   adb reverse tcp:8081 tcp:8081
-  cd front-end/AI-PEER
-  npx expo start
+  docker compose up -d web
   ```
 
 ### 9. "Network request failed" or Login Timeout on Physical Android Phone
@@ -338,4 +393,3 @@ docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cx
   adb reverse tcp:8085 tcp:8085
   ```
 - **Solution (Wi-Fi):** Set `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to your host computer's local Wi-Fi IP (e.g., `http://192.168.1.150:8085`), then recompile the APK with `.\scripts\build-android-docker.ps1`.
-

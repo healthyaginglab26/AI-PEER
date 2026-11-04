@@ -104,6 +104,11 @@ if ($Install -or $Launch) {
 
             Write-Host "==> Sideloading APK ($OutApk)..." -ForegroundColor Green
             adb install -r "$OutApk"
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Existing AI-PEER installation has a different signature or build type. Uninstalling old version and reinstalling..."
+                adb uninstall com.anonymous.aipeer
+                adb install "$OutApk"
+            }
 
             Write-Host "==> Launching AI-PEER on phone..." -ForegroundColor Green
             adb shell am start -n com.anonymous.aipeer/.MainActivity

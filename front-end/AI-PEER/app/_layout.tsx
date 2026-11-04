@@ -1,5 +1,6 @@
 // app/_layout.tsx
 import { useEffect } from "react";
+import { Platform, StyleSheet, View } from "react-native";
 import { Stack } from "expo-router";
 import { LLMProvider } from "@/src/llm";
 import { AuthProvider } from "@/src/auth";
@@ -70,11 +71,36 @@ export default function RootLayout() {
       <LLMProvider>
         <PrefsProvider>
           <VisionProvider>
-            <RootStack />
+            {Platform.OS === "web" ? (
+              <View style={webStyles.outerBackdrop}>
+                <View style={webStyles.phoneFrame}>
+                  <RootStack />
+                </View>
+              </View>
+            ) : (
+              <RootStack />
+            )}
           </VisionProvider>
         </PrefsProvider>
       </LLMProvider>
     </AuthProvider>
   );
 }
+
+const webStyles = StyleSheet.create({
+  outerBackdrop: {
+    flex: 1,
+    backgroundColor: "#1e293b",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  phoneFrame: {
+    width: "100%",
+    maxWidth: 430,
+    height: "100%",
+    maxHeight: 932,
+    overflow: "hidden",
+    boxShadow: "0px 10px 40px rgba(0, 0, 0, 0.35)",
+  } as any,
+});
 

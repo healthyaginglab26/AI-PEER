@@ -1,8 +1,10 @@
 // services/GCS_Service.js
 // Handles GCS operations for video and model retrieval
 // In production: generates HIPAA-compliant signed URLs with expiration
-// In local dev without GCP keys: serves local static mock assets
+// In local dev without GCP keys: serves local static mock assets or real HuggingFace GGUF fallback
 
+const fs = require('fs');
+const path = require('path');
 const { Storage } = require('@google-cloud/storage');
 const { IAMCredentialsClient } = require('@google-cloud/iam-credentials').v1;
 
@@ -32,7 +34,13 @@ if (process.env.GCS_PRIVATE_KEY || isCloudRun) {
 
 // bucket where videos are stored
 const bucketName = process.env.GCS_BUCKET_NAME || 'aipeer_videos';
+const modelBucketName = process.env.GCS_MODEL_BUCKET || 'qwenfinetune';
 const clientEmail = process.env.GCS_CLIENT_EMAIL;
+
+// Public Qwen3.5-2B Q4_K_M GGUF fallback when running local dev without GCS service account keys
+const DEFAULT_HF_GGUF_URL =
+    process.env.FALLBACK_MODEL_URL ||
+    'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf';
 
 // initialize IAM client for Cloud Run signing (only when needed)
 let iamClient;
@@ -42,7 +50,7 @@ if (isCloudRun && !process.env.GCS_PRIVATE_KEY) {
 
 /**
  * Generate signed URL for a video or model file.
- * Falls back to local static mock assets in development mode.
+ * Falls back to local static assets (or HuggingFace GGUF for real on-device LLM) in development mode.
  */
 async function generateSignedUrl(videoFileName, overrideBucket) {
     // 1. Zero-Credential Local Development Fallback
@@ -52,9 +60,19 @@ async function generateSignedUrl(videoFileName, overrideBucket) {
         }
 
         const host = process.env.LOCAL_API_HOST || `http://localhost:${process.env.PORT || 8080}`;
-        if (overrideBucket && overrideBucket === process.env.GCS_MODEL_BUCKET) {
-            console.log(`[MOCK GCS] Serving local dummy model asset: ${videoFileName}`);
-            return `${host}/mock-assets/dummy-qwen.gguf`;
+        if (overrideBucket && overrideBucket === modelBucketName) {
+            // Check if the developer placed the real 1.2GB fine-tuned GGUF in API/mock-assets/
+            const localGgufPath = path.join(__dirname, '..', 'mock-assets', 'Qwen3.5-2B-aipeer-Q4_K_M.gguf');
+            try {
+                const stat = fs.statSync(localGgufPath);
+                if (stat.size > 100 * 1024 * 1024) {
+                    console.log(`[LOCAL GCS] Serving local fine-tuned GGUF model from mock-assets (${Math.round(stat.size / (1024 * 1024))} MB)`);
+                    return `${host}/mock-assets/Qwen3.5-2B-aipeer-Q4_K_M.gguf`;
+                }
+            } catch {}
+
+            console.log(`[LOCAL GCS] No GCS_PRIVATE_KEY configured; serving real Qwen3.5-2B Q4_K_M GGUF from HuggingFace: ${DEFAULT_HF_GGUF_URL}`);
+            return DEFAULT_HF_GGUF_URL;
         }
 
         console.log(`[MOCK GCS] Serving local mock exercise video asset: ${videoFileName}`);
