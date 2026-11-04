@@ -38,7 +38,15 @@ export default function Verify() {
 
     try {
       setLoading(true);
-      const res = await api.verify(phone as string, code);
+      let res;
+      if (nativePhoneAuthAvailable && hasPendingVerification(phone as string)) {
+        // Firebase checks the code on-device; the backend checks the proof
+        const proof = await confirmPhoneCode(code);
+        res = await api.phoneLogin(proof.idToken, proof.password, proof.mode, proof.btrackScore);
+        await finishPhoneVerification();
+      } else {
+        res = await api.verify(phone as string, code);
+      }
 
       // Sign in with the custom token from the backend (supports both real Firebase JWTs and offline mock tokens)
       await signInWithToken(res.customToken);
@@ -54,7 +62,7 @@ export default function Verify() {
         router.replace("/(tabs)");
       }
     } catch (e: any) {
-      setErr(e.message || t("verify.invalidCode"));
+      setErr(phoneAuthErrorMessage(e) || e.message || t("verify.invalidCode"));
     } finally {
       setLoading(false);
     }

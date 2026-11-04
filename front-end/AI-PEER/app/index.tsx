@@ -8,6 +8,7 @@ import { auth } from "../src/firebaseClient";
 import { setRefreshToken } from "../src/auth/tokenStore";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
+import { nativePhoneAuthAvailable, startPhoneVerification, phoneAuthErrorMessage } from "../src/auth/phoneVerification";
 import { usePrefs } from "../src/prefs-context";
 import { type ContrastPalette, scaleFontSizes, radii, spacing } from "../src/theme";
 
@@ -48,10 +49,16 @@ export default function Login() {
 
     try {
       setLoading(true);
-      await api.sendCode(p, password, "login");
+      if (nativePhoneAuthAvailable) {
+        // Check the password first so a typo doesn't cost a text
+        await api.checkCredentials(p, password, "login");
+        await startPhoneVerification(p, password, "login");
+      } else {
+        await api.sendCode(p, password, "login");
+      }
       router.replace(`/verify?phone=${p}&mode=login`);
     } catch (e: any) {
-      setErr(e.message || t("login.invalidPhoneOrPassword"));
+      setErr(phoneAuthErrorMessage(e) || e.message || t("login.invalidPhoneOrPassword"));
     } finally {
       setLoading(false);
     }
@@ -67,10 +74,16 @@ export default function Login() {
     try {
       setLoading(true);
       const btrack = btrackInput.trim() ? parseFloat(btrackInput.trim()) : undefined;
-      await api.sendCode(p, password, "create", btrack);
+      if (nativePhoneAuthAvailable) {
+        // Account is only created after the phone is verified (/auth/phone-login)
+        await api.checkCredentials(p, password, "create");
+        await startPhoneVerification(p, password, "create", btrack);
+      } else {
+        await api.sendCode(p, password, "create", btrack);
+      }
       router.replace(`/verify?phone=${p}&mode=create`);
     } catch (e: any) {
-      setErr(e.message || t("login.failedCreateAccount"));
+      setErr(phoneAuthErrorMessage(e) || e.message || t("login.failedCreateAccount"));
     } finally {
       setLoading(false);
     }
