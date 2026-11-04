@@ -161,12 +161,23 @@ export default function VideoConfirmPage() {
                 </TouchableOpacity>
               </View>
             ) : videoData ? (
-              <Video
-                source={{ uri: videoData.videoUrl }}
-                useNativeControls
-                resizeMode={ResizeMode.CONTAIN}
-                style={styles.video}
-              />
+              videoData.videoUrl.includes("/mock-assets/") ? (
+                <View style={styles.videoPlaceholder}>
+                  <Ionicons name="videocam-outline" size={44} color={warmRed} />
+                  <Text style={styles.placeholderTitle}>{videoData.title || exerciseLabel}</Text>
+                  <Text style={styles.placeholderText}>
+                    Local Dev Mock Video Preview ({duration}){"\n"}
+                    Real MP4 streams load from Google Cloud Storage when GCS credentials are configured.
+                  </Text>
+                </View>
+              ) : (
+                <Video
+                  source={{ uri: videoData.videoUrl }}
+                  useNativeControls
+                  resizeMode={ResizeMode.CONTAIN}
+                  style={styles.video}
+                />
+              )
             ) : null}
           </View>
 

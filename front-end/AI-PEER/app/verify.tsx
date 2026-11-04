@@ -7,13 +7,7 @@ import { signInWithCustomToken } from "firebase/auth";
 import { auth } from "../src/firebaseClient";
 import { api } from "../src/api";
 import { setRefreshToken } from "../src/auth/tokenStore";
-import {
-  nativePhoneAuthAvailable,
-  hasPendingVerification,
-  confirmPhoneCode,
-  finishPhoneVerification,
-  phoneAuthErrorMessage,
-} from "../src/auth/phoneVerification";
+import { useAuth } from "../src/auth";
 import { usePrefs } from "../src/prefs-context";
 import { type ContrastPalette, scaleFontSizes, spacing, radii } from "../src/theme";
 
@@ -21,9 +15,12 @@ export default function Verify() {
   const router = useRouter();
   const { t } = useTranslation();
   const { phone, mode } = useLocalSearchParams();
+  const { signInWithToken } = useAuth();
   const { colors, scaled } = usePrefs();
   const s = useMemo(() => createStyles(colors, scaled), [colors, scaled]);
-  const [code, setCode] = useState("");
+  const isDev = __DEV__ || process.env.EXPO_PUBLIC_USE_EMULATOR === "true" || process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN === "true";
+  const isDevTestNumber = isDev && typeof phone === 'string' && (phone.endsWith('5555') || phone === '15555555555');
+  const [code, setCode] = useState(isDevTestNumber ? "123456" : "");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -51,8 +48,8 @@ export default function Verify() {
         res = await api.verify(phone as string, code);
       }
 
-      // Sign in with the custom token from the backend
-      await signInWithCustomToken(auth, res.customToken);
+      // Sign in with the custom token from the backend (supports both real Firebase JWTs and offline mock tokens)
+      await signInWithToken(res.customToken);
       // Store refresh token for persistent login (30-day session). Lands in
       // Keychain (iOS) / EncryptedSharedPreferences (Android), not AsyncStorage.
       await setRefreshToken(res.refreshToken);

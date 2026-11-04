@@ -1,0 +1,68 @@
+# syntax=docker/dockerfile:1
+# AI-PEER Android Build Container
+# Compiles React Native / Expo bare Android client into APK without requiring
+# host machine installations of JDK, Android SDK, build-tools, or NDK.
+
+FROM ubuntu:22.04
+
+LABEL maintainer="AI-PEER UCF Senior Design"
+LABEL description="Deterministic Android compilation container for AI-PEER React Native client"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1. Install system utilities and OpenJDK 17
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    unzip \
+    zip \
+    build-essential \
+    openjdk-17-jdk \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install Node.js 24 (pinned by .nvmrc)
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Configure Java and Android environment paths
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$JAVA_HOME/bin
+
+# 4. Download and setup Android command-line tools
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    curl -fsSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extracted && \
+    mv /tmp/cmdline-tools-extracted/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    rm -rf /tmp/cmdline-tools-extracted /tmp/cmdline-tools.zip
+
+# 5. Accept licenses and install Android SDK components (SDK 34/35, Build Tools 34/35, NDK 26.1 & 27.0, CMake 3.22)
+RUN yes | sdkmanager --licenses > /dev/null 2>&1 && \
+    sdkmanager --install \
+        "platform-tools" \
+        "platforms;android-34" \
+        "platforms;android-35" \
+        "build-tools;34.0.0" \
+        "build-tools;35.0.0" \
+        "ndk;26.1.10909125" \
+        "ndk;27.0.12077973" \
+        "cmake;3.22.1" && \
+    yes | sdkmanager --licenses > /dev/null 2>&1
+
+# 6. Configure Gradle memory and concurrency limits to prevent daemon OOMs and CPU thrashing
+ENV GRADLE_OPTS="-Dorg.gradle.daemon=true -Dorg.gradle.caching=true -Dorg.gradle.jvmargs=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\" -Dorg.gradle.workers.max=4"
+ENV CMAKE_BUILD_PARALLEL_LEVEL=4
+
+WORKDIR /app
+
+# Volume mount points:
+# /app          -> mapped to front-end/AI-PEER
+# /output       -> mapped to build-output on host
+# /root/.gradle -> persistent volume for Gradle cache
+
+# Default build command: installs dependencies if needed, ensures debug.keystore exists, builds assembleRelease (self-contained APK), and copies APK to /output
+CMD ["bash", "-c", "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && cd android && sed -i 's/\\r$//' gradlew && chmod +x gradlew && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp app/build/outputs/apk/release/app-release.apk /output/app-release.apk && echo 'Build complete: /output/app-release.apk'"]

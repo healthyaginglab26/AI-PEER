@@ -1,4 +1,3 @@
-
 //server.js serves as the main() like in other languages
 //basically ties everything together to function in the backend
 
@@ -36,6 +35,25 @@ app.get('/health',(req,res)=>{
 
 app.use('/auth', authRoutes);
 
+// Mock assets for zero-credential local development (MP4 videos & GGUF stub)
+const path = require('path');
+const ALLOWED_MOCK_ASSETS = new Set([
+    'sample-exercise.mp4',
+    'dummy-qwen.gguf',
+    'Qwen3.5-2B-aipeer-Q4_K_M.gguf'
+]);
+
+app.get('/mock-assets/:filename', (req, res) => {
+    if (process.env.NODE_ENV === 'production' || !!process.env.K_SERVICE) {
+        return res.status(404).json({ error: 'Not Found' });
+    }
+    const filename = path.basename(req.params.filename);
+    if (!ALLOWED_MOCK_ASSETS.has(filename)) {
+        return res.status(403).json({ error: 'Access denied: Asset not whitelisted' });
+    }
+    const assetPath = path.join(__dirname, 'mock-assets', filename);
+    res.sendFile(assetPath);
+});
 
 app.use(verification);
 

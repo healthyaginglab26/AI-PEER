@@ -155,25 +155,34 @@ export default function SettingsScreen() {
     }
   }
 
+  async function performLogout() {
+    const LOGIN_ROUTE = "/login";
+    try {
+      await logout();
+      const mod = await import("@react-native-async-storage/async-storage");
+      await mod.default.removeItem("token");
+      await mod.default.removeItem("user");
+    } catch {
+      // no-op
+    }
+    router.replace(LOGIN_ROUTE);
+  }
+
   function handleLogout() {
-    const LOGIN_ROUTE = "../login";
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(t("settings.logoutConfirmation"))) {
+        void performLogout();
+      }
+      return;
+    }
 
     Alert.alert(t("settings.logout"), t("settings.logoutConfirmation"), [
       { text: t("settings.cancel"), style: "cancel" },
       {
         text: t("settings.logout"),
         style: "destructive",
-        onPress: async () => {
-          try {
-            await logout();
-            const mod = await import("@react-native-async-storage/async-storage");
-            await mod.default.removeItem("token");
-            await mod.default.removeItem("user");
-          } catch {
-            // no-op
-          }
-
-          router.replace(LOGIN_ROUTE);
+        onPress: () => {
+          void performLogout();
         },
       },
     ]);

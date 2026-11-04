@@ -33,4 +33,8 @@ ehthumbs.db
 nul
 dist/
 build/
+build-output/
+*.apk
+*.aab
+
 

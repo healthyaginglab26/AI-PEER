@@ -1,13 +1,18 @@
 // app/index.tsx
 import { useRouter } from "expo-router";
 import { useState, useEffect, useMemo } from "react";
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { signInWithCustomToken } from "firebase/auth";
+import { auth } from "../src/firebaseClient";
+import { setRefreshToken } from "../src/auth/tokenStore";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { nativePhoneAuthAvailable, startPhoneVerification, phoneAuthErrorMessage } from "../src/auth/phoneVerification";
 import { usePrefs } from "../src/prefs-context";
 import { type ContrastPalette, scaleFontSizes, radii, spacing } from "../src/theme";
+
+const isDev = __DEV__ || process.env.EXPO_PUBLIC_USE_EMULATOR === "true" || process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN === "true";
 
 function normalizePhone(input: string) {
   // keep digits only; backend can decide final validation
@@ -17,7 +22,7 @@ function normalizePhone(input: string) {
 export default function Login() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signInWithToken } = useAuth();
   const { colors, scaled } = usePrefs();
   const s = useMemo(() => createStyles(colors, scaled), [colors, scaled]);
 
@@ -36,26 +41,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
- /* const onSubmit = async () => {
-    setErr(null);
-    const p = normalizePhone(phone);
-    if (p.length < 10) return setErr("Enter a valid phone number (10+ digits).");
-    if (password.length < 6) return setErr("Password must be at least 6 characters.");
-    
-   
-    try {
-      setLoading(true);
-      const res = await api.login(p, password);
-      // store token for later requests
-      try { await AsyncStorage.setItem("token", res.token); } catch {}
-      router.replace("/(tabs)"); // go to the app after login
-    } catch (e: any) {
-      setErr("Invalid phone or password");
-    } finally {
-      setLoading(false);
-    }
-  };
- */
   const onLogin = async () => {
     setErr(null);
     const p = normalizePhone(phone);
@@ -104,6 +89,32 @@ export default function Login() {
     }
   };
 
+  const onDevSkipLogin = async () => {
+    setErr(null);
+    setLoading(true);
+    try {
+      // 1. Send dev verification code
+      await api.sendCode("15555555555", "password123", "login");
+      // 2. Automatically verify mock code 123456
+      const res = await api.verify("15555555555", "123456");
+      // 3. Authenticate (supports both real Firebase custom JWTs and offline mock tokens) & persist refresh token
+      await signInWithToken(res.customToken);
+      await setRefreshToken(res.refreshToken);
+      // 4. Navigate directly into the app
+      router.replace("/(tabs)");
+    } catch (e: any) {
+      setErr(e.message || "Dev fast login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFillTestCredentials = () => {
+    setPhone("(555) 555-5555");
+    setPassword("password123");
+    setErr(null);
+  };
+
   const switch_clearPages = async () => {
     setIsCreating(!isCreating);
     setShowPw(false);
@@ -123,9 +134,9 @@ export default function Login() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={spacing(6)}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={spacing(6)}>
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View style={s.wrap}>
+      <ScrollView contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled">
         <Text style={s.brand}>AI PEER</Text>
         <Text style={s.subtitle}>{isCreating ? t("login.createAccount") : t("login.signInToContinue")}</Text>
 
@@ -241,9 +252,29 @@ export default function Login() {
             <TouchableOpacity onPress={() => switch_clearPages()} style={s.switchWrap}>
               <Text style={s.switchText}>{t("login.dontHaveAccount")}</Text>
             </TouchableOpacity>
+
+            {isDev && (
+              <View style={{ marginTop: spacing(4), gap: spacing(2) }}>
+                <TouchableOpacity
+                  style={[s.loginBtn, { backgroundColor: "#0284c7", marginTop: 0 }]}
+                  onPress={onDevSkipLogin}
+                  disabled={loading}
+                >
+                  <Text style={s.loginTxt}>⚡ Use Default Test Login (Skip)</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.loginBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.accent, marginTop: 0 }]}
+                  onPress={onFillTestCredentials}
+                  disabled={loading}
+                >
+                  <Text style={[s.loginTxt, { color: colors.accent }]}>📝 Fill Test Credentials</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
-      </View>
+      </ScrollView>
     </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
@@ -254,7 +285,7 @@ const createStyles = (
   scaled: ReturnType<typeof scaleFontSizes>
 ) =>
 StyleSheet.create({
-  wrap: { flex: 1, padding: spacing(6), backgroundColor: colors.background, justifyContent: "center" },
+  wrap: { flexGrow: 1, padding: spacing(6), backgroundColor: colors.background, justifyContent: "center" },
   brand: { fontSize: scaled.h1, fontWeight: "800", color: colors.accent, textAlign: "center" },
   subtitle: { fontSize: scaled.small, color: colors.text, textAlign: "center", marginTop: spacing(1), marginBottom: spacing(3) },
 

@@ -1,310 +1,395 @@
-# AI-PEER Setup Guide
+# AI-PEER Developer (Local) Setup Guide
 
-For a new team member on a blank Mac. Gets you from "just cloned the repo" to "app running on a device or simulator, backend reachable."
-
----
-
-## Prerequisites (macOS)
-
-### Node
-
-The frontend `.nvmrc` pins **Node 24**. The API requires Node >= 20. Use Node 24 for everything.
-
-```bash
-# If you use nvm:
-nvm install 24
-nvm use 24
-
-# If you use fnm:
-fnm install 24
-fnm use 24
-```
-
-Confirm: `node --version` should print `v24.x.x`.
-
-### Xcode
-
-iOS deployment target is **15.1** (set in `ios/Podfile`). You need **Xcode 26 or later** (the README requires it; Xcode 26 ships with a Clang that handles the C++20 features VisionCamera relies on).
-
-Install from the Mac App Store or [developer.apple.com/download](https://developer.apple.com/download). After installing, accept the license and point the developer tools at Xcode:
-
-```bash
-sudo xcode-select -s /Applications/Xcode.app
-sudo xcodebuild -license accept
-```
-
-### CocoaPods
-
-Install via Homebrew (version 1.16+). Do not use `sudo gem install` — the macOS system Ruby is too old.
-
-```bash
-brew install cocoapods
-```
-
-Confirm: `pod --version` should print `1.16.x` or higher.
-
-### Watchman
-
-```bash
-brew install watchman
-```
-
-### Android Studio and JDK (only if running Android)
-
-- Install **Android Studio** from [developer.android.com/studio](https://developer.android.com/studio).
-- Install **JDK 17** (React Native's Gradle build requires it). Android Studio bundles one; set `JAVA_HOME` to point at it.
-- In the SDK Manager, install the Android SDK platform and build tools versions matching `android/build.gradle`.
-- Set environment variables:
-
-```bash
-export ANDROID_HOME=$HOME/Library/Android/sdk
-export ANDROID_SDK_ROOT=$ANDROID_HOME
-export PATH=$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
-```
-
-### gcloud CLI (backend deploy only)
-
-```bash
-brew install --cask google-cloud-sdk
-gcloud auth login
-gcloud config set project <your-project-id>
-```
-
-### Firebase CLI (Functions deploy only)
-
-```bash
-npm install -g firebase-tools
-firebase login
-```
+Welcome to the AI-PEER development setup guide. AI-PEER adopts a **Docker-first, zero-host-install** development approach. You do not need to install local runtimes (Node.js, OpenJDK 17, Android SDK tools, Gradle, or C++ compilers) on your host operating system to run backend services or compile Android test APKs.
 
 ---
 
-## Clone and install
+## Prerequisites (Universal: Windows, macOS, Linux)
+
+To clone and run AI-PEER, you only need two core tools installed on your host machine:
+
+1. **Git** — [git-scm.com](https://git-scm.com/)
+2. **Docker Desktop** (macOS / Windows) or **Docker Engine + Docker Compose** (Linux) — [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+
+> [!NOTE]
+> Ensure Docker Desktop is allocated at least **4 GB of RAM** (6 GB+ recommended) in *Settings → Resources → Advanced* to accommodate multi-threaded C++ and Gradle compilations.
+
+### Optional Host Utilities:
+- **`adb` (Android Debug Bridge):** Required only if you plan to sideload compiled APKs directly to a physical Android device plugged into your computer via USB.
+- **Xcode & CocoaPods (macOS Only):** Required **only** if you are explicitly developing or building the native iOS client. *(See [iOS Scope Note](#ios-native-development-macos-only) below).*
+
+---
+
+## Quickstart (Zero to Running in 3 Steps)
+
+### Step 1: Clone Repository & Configure Secrets
 
 ```bash
-git clone https://github.com/munishbp/AI-PEER.git
+git clone https://github.com/healthyaginglab26/AI-PEER.git
 cd AI-PEER
 ```
 
-There are three independent Node dependency trees. Install each one:
+Configure your local environment variables from the provided examples:
 
 ```bash
-# 1. React Native frontend
-cd front-end/AI-PEER
-nvm use          # activates Node 24 from .nvmrc
-npm install
+# 1. Configure API backend environment
+cp API/.env.example API/.env
 
-# 2. Express API backend
-cd ../../API
-npm install
-
-# 3. Firebase Cloud Functions
-cd ../functions
-npm install
-```
-
-Then install iOS native pods (macOS only):
-
-```bash
-cd ../front-end/AI-PEER/ios
-pod install
-cd ..
-```
-
-`pod install` can take several minutes the first time — it fetches MediaPipe, VisionCamera, and all other native pods.
-
-After `pod install`, run the iOS doctor to verify the environment is healthy before your first build:
-
-```bash
-# from front-end/AI-PEER
-npm run ios:doctor
-```
-
-Fix any FAIL items before proceeding (see "Common first-run failures" below).
-
----
-
-## Secrets and environment variables
-
-### Frontend (`front-end/AI-PEER/.env`)
-
-Copy the example file and fill in values:
-
-```bash
+# 2. Configure Mobile frontend environment
 cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env
 ```
 
-| Variable | Purpose | Who to ask |
+### Key Environment Variables
+
+**These only ever need to be modified if you are starting for production.**
+
+**API Backend (`API/.env`):**
+| Variable | Description | Source / Default |
 |---|---|---|
-| `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase Client SDK | Firebase Console → Project Settings → Your Apps |
-| `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase Client SDK | same |
-| `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Client SDK | same |
-| `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase Client SDK | same |
-| `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase Client SDK | same |
-| `EXPO_PUBLIC_FIREBASE_APP_ID` | Firebase Client SDK | same |
-| `EXPO_PUBLIC_API_BASE_URL` | Points the app at the Express API. Defaults to the production Cloud Run URL if unset. For local dev, override to `http://localhost:3000`. | Leave as-is for production; override for local API testing |
+| `GCS_PROJECT_ID` | GCP Project ID for Storage & Firebase Admin | Team Lead / GCP Console |
+| `GCS_CLIENT_EMAIL` | Service Account email for signing URLs | Service account JSON |
+| `GCS_PRIVATE_KEY` | Service Account private key with literal `\n` | Service account JSON |
+| `GCS_BUCKET_NAME` | Storage bucket for exercise demo videos | `aipeer_videos` |
+| `GCS_MODEL_BUCKET` | Storage bucket for fine-tuned LLM model | `qwenfinetune` |
+| `IDENTITY_PLATFORM_API_KEY` | Identity Platform API key for SMS 2FA | Firebase Console → General |
+| `PORT` | Container internal listening port for Express API | `8080` (mapped to host `8085` by default) |
+| `NODE_ENV` | Runtime environment | `development` |
 
-The default `EXPO_PUBLIC_API_BASE_URL` in `src/api.ts` falls back to the production Cloud Run endpoint, so the app works out of the box once the Firebase vars are filled in.
-
-### API backend (`API/.env`)
-
-Create `API/.env` from the example:
-
-```bash
-cp API/.env.example API/.env
-```
-
-| Variable | Purpose | Who to ask |
+**Mobile Frontend (`front-end/AI-PEER/.env`):**
+| Variable | Description | Source / Default |
 |---|---|---|
-| `GCS_PROJECT_ID` | Google Cloud project ID for GCS and Firebase Admin | Team lead / GCP console |
-| `GCS_CLIENT_EMAIL` | Service account email used to sign GCS URLs locally | Team lead (download the service account JSON) |
-| `GCS_PRIVATE_KEY` | Private key from the service account JSON (paste with literal `\n`) | Team lead |
-| `GCS_BUCKET_NAME` | GCS bucket for exercise videos (default: `aipeer_videos`) | Team lead |
-| `GCS_MODEL_BUCKET` | GCS bucket for the LLM model file (default: `qwenfinetune`) | Team lead |
-| `IDENTITY_PLATFORM_API_KEY` | Google Identity Platform API key for SMS 2FA | Firebase Console → Project Settings → General → Web API key |
-| `PORT` | Port the Express server listens on (default: `3000`) | Leave as `3000` for local dev |
-| `NODE_ENV` | Set to `development` locally | Leave as `development` |
-
-On Cloud Run, `GCS_PRIVATE_KEY` is absent and Application Default Credentials are used automatically. Locally, the three `GCS_*` credential vars are required to generate signed URLs for videos and the LLM model.
-
-### Firebase Functions (`functions/`)
-
-The Cloud Function reads REDCap config from a Firestore document at `config/redcap`. There are no `.env` file secrets for Functions — the function uses Application Default Credentials via `admin.initializeApp()`. To run the emulator locally, set the credentials env var:
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account.json
-```
-
-Confirm the `config/redcap` document exists in the `ai-peer` Firestore database with `apiToken` and `apiUrl` fields. Ask the team lead for the REDCap API token — it lives only in Firestore, not in any file in the repo.
+| `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase Web API key | Firebase Console |
+| `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | Firebase Console |
+| `EXPO_PUBLIC_API_BASE_URL` | Local API URL for development | Default: `http://localhost:8085` *(matches docker-compose default; use `http://10.0.2.2:8085` in Android Emulator; use `http://localhost:8085` with `adb reverse tcp:8085 tcp:8085` or your PC's local Wi-Fi IP for physical devices)* |
+| `EXPO_PUBLIC_ENABLE_TEST_LOGIN` | Enables 1-click test login buttons on local builds | `true` |
 
 ---
 
-## First run — iOS (recommended)
+### Step 2: Spin Up Backend API
 
-1. Start Metro bundler in one terminal:
+The Express API is containerized using `API/Dockerfile` and managed via Docker Compose (mapped to host port **8085** by default to prevent conflicts with other services on 8080 and Expo Metro on 8081):
 
-    ```bash
-    cd front-end/AI-PEER
-    npx expo start
-    ```
+```bash
+# Start API backend in the background
+docker compose up -d api
+```
 
-    Leave this running. Metro serves the JS bundle to the native app.
+Verify that the backend is running and healthy:
 
-2. Open the Xcode workspace in a second terminal (or from Finder):
+```bash
+# On macOS / Linux / Git Bash:
+curl http://localhost:8085/health
 
-    ```bash
-    npm run ios
-    # equivalent to: open ios/AIPEER.xcworkspace
-    ```
+# On Windows PowerShell:
+curl.exe http://localhost:8085/health
+# Or: Invoke-RestMethod http://localhost:8085/health
 
-    Always open the `.xcworkspace`, never the `.xcodeproj`.
+# Expected response: {"status":"OK","message":"AI PEER API is running"}
+```
 
-3. In Xcode, select your target device or simulator from the toolbar.
+View live server logs:
+```bash
+docker compose logs -f api
+```
 
-4. Press **Cmd+R** to build and run.
+Stop or reset the API:
+```bash
+# Pause/stop API container:
+docker compose stop api
 
-5. The first build takes several minutes (compiling MediaPipe, VisionCamera, Hermes). Subsequent builds are much faster.
-
-**Do NOT use `npx expo run:ios`.** This is a bare workflow project. The Xcode path is the only reliable way to build — it runs all Podfile `post_install` hooks, including the C++20 injection that VisionCamera requires. `npx expo run:ios` can silently skip those hooks and produce a broken build.
-
-JS-only changes hot-reload via Metro without a rebuild. Only Swift, Objective-C, or Podfile changes require a fresh Xcode build.
+# Rebuild & restart API container (after changing API/package.json or API/Dockerfile):
+docker compose up -d --build --force-recreate api
+```
 
 ---
 
-## First run — Android (optional)
+### Step 3: Choose Your Frontend Mode (Pick What Fits Your Task!)
 
-```bash
-cd front-end/AI-PEER
+You do **not** need to wait for a full Android APK compilation just to test UI, login, API routes, or chat screens. Choose one of the **3 development modes** below based on what you are working on:
 
-# Terminal 1: Metro
-npx expo start
-
-# Terminal 2: build and run
-npm run android
-```
-
-Or open the `android/` directory directly in Android Studio and use the Run button.
-
-For detailed Android environment setup, troubleshooting, and the doctor/clean scripts, see the **Android Troubleshooting** section in `front-end/AI-PEER/README.md`.
+| Mode | Best For... | Wait Time | Hardware Needed |
+|---|---|---|---|
+| **Mode 1: Web / Mock Mode** *(Recommended for 80% of tasks)* | UI screens, login/2FA (`verify.tsx`), API integration, questionnaires, translations, and AI Chat UI layout (uses built-in Mock LLM) | **~5 seconds** after the first build (Instant hot-reload) | Any PC browser (`http://localhost:8081`) — **No phone required** |
+| **Mode 2: Live Dev APK** *(Build Once, Instant Reload)* | Testing real on-device `llama.rn` LLM changes or `VisionCamera` pose tracking while actively editing `.ts`/`.tsx` files | **~10 mins once**, then **1 second** per save | Android Phone + USB Cable |
+| **Mode 3: Standalone Release APK** | Final QA testing, clinical demos, or running the app unplugged from your computer | **~12 mins** first build, **~2–3 mins** cached rebuilds | Android Phone |
 
 ---
 
-## First run — backend locally
+#### ⚡ Mode 1: Web / Mock Mode (5-Second Startup — Zero Android Compile)
 
-The API has no `dev` script with auto-restart in `package.json`; run it directly with node or via nodemon (available as a dev dependency):
-
-```bash
-cd API
-node server.js
-# or for auto-restart on file changes:
-npx nodemon server.js
-```
-
-The server starts on port 3000 (or `PORT` from `.env`). Confirm it is up:
+If you are working on screens, navigation, backend API calls, Firebase Auth, or AI Chat UI, run the web container (or local Expo web). It automatically enables `EXPO_PUBLIC_MOCK_LLM=true` so you can test the AI Chat screen immediately without downloading the 1.2 GB model or compiling C++:
 
 ```bash
-curl http://localhost:3000/health
-# expected: {"status":"OK","message":"AI PEER API is running"}
-```
+# Start both the API and Web dev server in Docker (zero Node.js install needed on host):
+docker compose up -d api web
 
-To point the app at your local API instead of production Cloud Run, set in `front-end/AI-PEER/.env`:
-
+# View logs / wait until Metro says "Waiting on http://localhost:8081":
+docker compose logs -f web
 ```
-EXPO_PUBLIC_API_BASE_URL=http://localhost:3000
-```
+Then open **`http://localhost:8081`** in your browser! Every time you press Save in VS Code, the browser updates in 1 second.
+*(If you already have Node.js installed locally, you can also just run `cd front-end/AI-PEER && npx expo start --web`).*
 
-Then restart Metro. When testing on a physical device (not a simulator), use your Mac's LAN IP instead of `localhost` — for example `http://192.168.x.x:3000`.
+##### Mode 1 — Stop, Clear Cache & Reset Commands:
+```bash
+# Stop Mode 1 (keeps containers & cached node_modules intact for next time):
+docker compose stop web api
+
+# Restart Web & clear Metro bundler cache (use after changing metro.config.js or .env):
+docker compose exec web npx expo start --web --clear --port 8081
+# (Or recreate the containers cleanly):
+docker compose up -d --force-recreate api web
+
+# Full Reset for Mode 1 (removes web/api containers AND wipes cached frontend node_modules):
+docker compose rm -f -s web api
+docker volume rm aipeer-node-modules-cache
+docker compose up -d --build api web
+```
 
 ---
 
-## First run — Firebase Functions locally
+#### 🔄 Mode 2: Live-Reloading Android Dev Build (Compile Once, Edit Instantly)
+
+If you need the real phone camera (`VisionCamera`) or real 1.2 GB `llama.rn` model on your Android phone, **do not rebuild the APK after every code change.** Build the `debug` APK **once**, then stream live JavaScript updates over USB:
+
+**1. Build & install the Debug APK once:**
+```powershell
+# Windows (PowerShell):
+.\scripts\build-android-docker.ps1 -BuildType debug -Install
+
+# macOS / Linux / Git Bash:
+./scripts/build-android-docker.sh debug --install
+```
+
+**2. Start the Metro live-reload server:**
+```powershell
+# Forward Metro port (8081) and API port (8085) to your USB-connected phone:
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:8085 tcp:8085
+
+# Start API + Metro (via Docker):
+docker compose up -d api web
+# OR locally: cd front-end/AI-PEER && npx expo start
+```
+Now, whenever you edit any `.tsx` or `.ts` file (like `ai-chat.tsx` or `systemPrompt.ts`) and press Save, your phone updates in **1–2 seconds** without ever running Docker Android compilation again!
+
+##### Mode 2 — Stop, Clear Cache & Reset Commands:
+```powershell
+# Stop the Metro & API servers when finished for the day:
+docker compose stop web api
+
+# Clear USB port-forwarding rules on your phone (optional):
+adb reverse --remove-all
+
+# Soft Reset (clear Metro JS bundle cache if phone shows stale JS):
+docker compose restart web
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:8085 tcp:8085
+
+# Full Native Reset (only needed if you add/change native Android packages in package.json):
+docker compose down
+docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
+.\scripts\build-android-docker.ps1 -BuildType debug -Install
+```
+
+---
+
+#### 📦 Mode 3: Standalone Release APK (Self-Contained, Runs Unplugged)
+
+No Android Studio, Java JDK, or Android SDK installations are required on your host machine. The containerized builder (`Dockerfile.android`) encapsulates OpenJDK 17, Android SDK platforms 34/35, Build Tools 34/35, NDK 26.1 & 27.0, CMake 3.22, and caches `node_modules` and C++ `.cxx` objects in fast Linux volumes.
+
+##### On Windows (PowerShell):
+```powershell
+# Standard release build:
+.\scripts\build-android-docker.ps1
+
+# Build AND automatically install + reverse port + launch on connected phone:
+.\scripts\build-android-docker.ps1 -Install
+```
+
+##### On macOS / Linux / Git Bash:
+```bash
+# Standard release build:
+./scripts/build-android-docker.sh
+
+# Build AND automatically install + reverse port + launch on connected phone:
+./scripts/build-android-docker.sh --install
+```
+
+##### Or Direct Docker Compose Command:
+```bash
+docker compose run --rm android-builder
+```
+**Unless something specifically prompts you to use this one, don't.**
+
+##### Mode 3 — Stop & Reset Commands:
+```powershell
+# Stop an in-progress Android build (or stop all running containers):
+docker compose stop
+
+# Full Reset of Android Build Caches (wipes Gradle, C++ .cxx, build outputs, and node_modules volumes):
+docker compose down
+docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
+
+# Rebuild the Android Builder Docker image from scratch (if Dockerfile.android changed):
+docker compose build --no-cache android-builder
+```
+
+##### What Happens During the Build:
+1. Docker builds the compilation container and caches it locally.
+2. Source files are mounted, while `node_modules`, Gradle caches, and C++ `.cxx` build outputs are persisted in fast Linux Docker volumes (`aipeer-node-modules-cache`, `aipeer-gradle-cache`, `aipeer-android-cxx-cache`, `aipeer-android-build-cache`) so subsequent builds only take a few minutes.
+3. Gradle wrapper executes `assembleRelease` with `arm64-v8a` native architecture.
+4. The JavaScript bundle is automatically compiled and embedded directly inside the APK, signed with the debug keystore.
+5. The compiled standalone APK is automatically saved to your host workspace at:
+   ```
+   build-output/app-release.apk
+   ```
+
+#### Installing and Launching on a Test Device:
+Connect your Android phone with USB debugging enabled, then run:
+```bash
+adb install -r build-output/app-release.apk
+adb shell am start -n com.anonymous.aipeer/.MainActivity
+```
+**DO NOT USE THE RECOMMENDATION MADE BY THE CONTAINER**
+
+The app will launch immediately and run completely offline on your device without needing Node.js or Metro running on your PC.
+
+> [!TIP]
+> **Connecting a Physical Android Phone to the Local Backend API:**
+> On a physical device, `http://localhost:8085` looks for an API running on the phone itself, not your PC.
+> - **USB Connection (Recommended):** If your phone is plugged in via USB, forward port `8085` once:
+>   ```powershell
+>   adb reverse tcp:8085 tcp:8085
+>   ```
+> - **Wi-Fi Connection:** In `front-end/AI-PEER/.env`, update `EXPO_PUBLIC_API_BASE_URL` to your PC's local network IP address (e.g. `http://192.168.1.X:8085`) before building the APK.
+
+> [!NOTE]
+> **Local Testing Login Options:**
+> When opening the app on a local test build, you will see two developer buttons below the login form:
+> - **`⚡ Use Default Test Login (Skip)`**: Bypasses the SMS verification screen completely, logging you straight into the dashboard as the pre-seeded patient (John Senior).
+> - **`📝 Fill Test Credentials`**: Fills in the mock credentials (`5555555555` / `password123`) so you can test the form manually.
+
+---
+
+## iOS Native Development (macOS Only)
+
+> [!IMPORTANT]
+> **Why iOS is not containerized:**
+> Apple's software license agreement restricts macOS and Xcode from running in standard Linux Docker environments. Building the native iOS target (`.xcworkspace`) requires macOS hardware and local developer tools.
+
+If you are on macOS and developing for iOS:
+
+1. **Install Prerequisites (macOS):**
+   ```bash
+   brew install cocoapods watchman
+   sudo xcode-select -s /Applications/Xcode.app
+   sudo xcodebuild -license accept
+   ```
+2. **Install Pods:**
+   ```bash
+   cd front-end/AI-PEER
+   nvm use # Activates Node 24 from .nvmrc
+   npm install
+   cd ios && pod install && cd ..
+   ```
+3. **Verify Environment:**
+   ```bash
+   npm run ios:doctor
+   ```
+4. **Run in Xcode:**
+   ```bash
+   npm run ios
+   # Opens ios/AIPEER.xcworkspace in Xcode
+   ```
+   Select simulator or physical device and press **Cmd+R** to build. *(Do not use `npx expo run:ios` as this is an Expo bare workflow project).*
+
+---
+
+## Local Firebase Functions Emulator (Optional)
+
+If testing the REDCap sync scheduled Cloud Function locally:
 
 ```bash
 cd functions
+npm install
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account.json
-firebase emulators:start --only functions
+npx firebase emulators:start --only functions
 ```
 
-The REDCap sync function is scheduled (runs at 2am daily in production). To invoke it manually in the emulator, use the Firebase Emulator UI at `http://localhost:4000` or call the Functions REST endpoint directly.
+Functions emulator UI is accessible at `http://localhost:4000`.
 
 ---
 
-## Common first-run failures
+## Troubleshooting Containerized Workflows
 
-**`pod install` fails with C++ template errors or module map issues**
+### 1. Docker daemon is not running
+```
+failed to connect to the docker API at ...
+```
+- **Solution:** Ensure Docker Desktop is launched and running in your taskbar / menu bar before running `docker compose` or build scripts.
 
-Stale Clang module cache. From `front-end/AI-PEER`:
+### 2. Gradle Out-Of-Memory (OOM) / WSL2 Freezes during native C++ compilation
+- **Cause:** Compiling native C++ libraries (`llama.rn`, `VisionCamera`, `reanimated`) on high-core CPUs can spawn many parallel Clang processes, exhausting host WSL2 memory.
+- **Solution & Built-in Protection:**
+  - AI-PEER enforces `CMAKE_BUILD_PARALLEL_LEVEL=4` and Gradle `--max-workers=4` / `-Dorg.gradle.workers.max=4` by default to balance speed and memory usage.
+  - In Docker Desktop, ensure at least **4 GB to 6 GB** of memory is allocated (*Settings → Resources → Advanced*).
 
+### 3. Missing `debug.keystore` Error (`validateSigningDebug FAILED`)
+- **Cause:** Android Gradle requires a debug keystore to sign the debug APK, but `*.keystore` files are ignored in `.gitignore`.
+- **Solution:** Both `build-android-docker.ps1` and `build-android-docker.sh` automatically detect if `debug.keystore` is missing and generate one via `keytool` before invoking Gradle.
+
+### 4. Port Conflict (`8080` or `8085` already allocated)
+- **Symptom:** `Bind for 0.0.0.0:8085 failed: port is already allocated` (or `8080` if overridden).
+- **Default Port Behavior:** `docker-compose.yml` binds host port **`8085`** to container port `8080` by default (`"${PORT:-8085}:8080"`) to avoid common conflicts with other local databases on 8080 and Expo's Metro Bundler on 8081.
+- **How to Override the Host Port:**
+  > [!NOTE]
+  > Docker Compose evaluates `${PORT}` from your host terminal environment or a root-level `.env` file (`AI-PEER/.env`), **not** from `API/.env`.
+  - **PowerShell (Terminal):** `$env:PORT="8086"; docker compose up -d api`
+  - **Bash / macOS / Linux (Terminal):** `PORT=8086 docker compose up -d api`
+  - **Permanent Root `.env`:** Create `AI-PEER/.env` with `PORT=8086`.
+  - **Update Mobile Frontend:** Remember to update `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to match the chosen host port (e.g., `http://localhost:8086`).
+
+### 5. Windows PowerShell Execution Policy Restrictions
+- **Symptom:** `File ...build-android-docker.ps1 cannot be loaded because running scripts is disabled on this system.`
+- **Solution:** Run with the bypass flag:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\scripts\build-android-docker.ps1
+  ```
+
+### 6. Rebuilding containers without cache
+If dependencies in `package.json` or Dockerfiles change:
 ```bash
-npm run ios:clean
+docker compose build --no-cache api
+docker compose build --no-cache android-builder
 ```
 
-This deintegrates pods, reinstalls them, and wipes `~/Library/Developer/Xcode/DerivedData`. Then in Xcode: **Product → Clean Build Folder** (Cmd+Shift+K), then build. See TROUBLESHOOTING.md for more detail.
-
-**Xcode build fails with "Unknown type name 'requires'" or VisionCamera template errors**
-
-Same root cause — C++20 not applied to all pod targets. Run `npm run ios:clean` from `front-end/AI-PEER`, then clean build folder in Xcode before rebuilding.
-
-**`npm run ios:doctor` reports "Command Line Tools points at /Library/Developer/CommandLineTools"**
-
+### 7. Cleaning Gradle / Node / C++ cache volumes (Nuclear Reset)
+If you change native dependencies in `package.json` and need to reset all persistent Docker containers and build volumes from scratch:
 ```bash
-sudo xcode-select -s /Applications/Xcode.app
+docker compose down -v
+```
+*(Or to remove specific named cache volumes individually):*
+```bash
+docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
 ```
 
-This is the most common silent cause of toolchain drift. Re-run `npm run ios:doctor` to confirm it clears. See TROUBLESHOOTING.md for the full doctor failure reference.
+### 8. "Unable to load script" Red Screen on Android
+- **Cause:** You installed `app-debug.apk` instead of `app-release.apk`. Debug APKs do not embed the JavaScript bundle and expect to load code dynamically from a local Metro dev server (`localhost:8081`).
+- **Solution (Standalone Testing - Least Overhead):** Build and install the default release APK:
+  ```powershell
+  .\scripts\build-android-docker.ps1
+  adb install -r build-output/app-release.apk
+  ```
+- **Solution (Live Metro Development):** Forward port 8081 and start the `web` Metro container:
+  ```powershell
+  adb reverse tcp:8081 tcp:8081
+  docker compose up -d web
+  ```
 
-**App launches but cannot reach the API**
-
-Check `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env`. If targeting a local server from a physical device, use your Mac's LAN IP (`http://192.168.x.x:3000`), not `localhost` — the device and the Mac are separate hosts.
-
-**2FA code never arrives**
-
-The SMS flow uses Google Identity Platform. Check that `IDENTITY_PLATFORM_API_KEY` is correctly set in `API/.env` and that Phone authentication is enabled in Firebase Console under Authentication → Sign-in method. See TROUBLESHOOTING.md for emulator-mode workarounds.
-
-**`react-native-worklets-core` missing error during build**
-
-```bash
-cd front-end/AI-PEER && npm install
-```
-
-This package is a direct dependency required by the custom MediaPipe Swift plugin. If `npm install` was run before the package was listed in `package.json`, re-running it fixes the build.
+### 9. "Network request failed" or Login Timeout on Physical Android Phone
+- **Cause:** When the app runs on a physical device, `http://localhost:8085` connects to loopback on the phone itself, not the Docker container running on your host computer.
+- **Solution (USB Connected):** Forward port 8085 from the host machine to your device:
+  ```powershell
+  adb reverse tcp:8085 tcp:8085
+  ```
+- **Solution (Wi-Fi):** Set `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to your host computer's local Wi-Fi IP (e.g., `http://192.168.1.150:8085`), then recompile the APK with `.\scripts\build-android-docker.ps1`.

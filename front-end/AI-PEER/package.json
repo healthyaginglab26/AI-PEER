@@ -14,7 +14,8 @@
     "ios:doctor": "bash scripts/ios-doctor.sh",
     "ios:clean": "bash scripts/ios-clean.sh",
     "android:doctor": "bash scripts/android-doctor.sh",
-    "android:clean": "bash scripts/android-clean.sh"
+    "android:clean": "bash scripts/android-clean.sh",
+    "android:build:docker": "bash ../../scripts/build-android-docker.sh"
   },
   "dependencies": {
     "@react-native-firebase/app": "23.8.8",

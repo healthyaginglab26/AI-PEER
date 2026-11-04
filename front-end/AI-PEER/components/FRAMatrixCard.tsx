@@ -193,10 +193,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFF",
     borderRadius: 16,
-    padding: 8,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#E6E6E6",
-    maxHeight: 600,
   },
 
   headerRow: {
@@ -233,11 +232,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
+    height: 260,
   },
 
   yRail: {
     width: 44,
-    height: "100%",
+    height: 260,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 6,
@@ -253,14 +253,13 @@ const styles = StyleSheet.create({
 
   matrix: {
     flex: 1,
-    aspectRatio: 1,
+    height: 260,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "#DADADA",
     overflow: "hidden",
     position: "relative",
     backgroundColor: "#FAFAFA",
-    minHeight: 235, // bigger than before
   },
 
   quad: { position: "absolute", width: "50%", height: "50%" },

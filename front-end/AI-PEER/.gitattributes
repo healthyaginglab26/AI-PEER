@@ -5,3 +5,4 @@
 # Windows teammates can run scripts/*.sh without manually dos2unix-ing them
 # after every fresh clone or branch switch.
 *.sh text eol=lf
+gradlew text eol=lf

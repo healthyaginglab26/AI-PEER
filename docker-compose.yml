@@ -1,0 +1,92 @@
+name: aipeer
+
+services:
+  # =========================================================================
+  # 1. Express API Backend (Cloud Run local emulation with live-reload)
+  # =========================================================================
+  api:
+    build:
+      context: ./API
+      dockerfile: Dockerfile
+    container_name: aipeer-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8085}:8080"
+    volumes:
+      # Mount backend code directories/files individually so /app/node_modules in the image is never overwritten
+      - ./API/server.js:/app/server.js
+      - ./API/config:/app/config
+      - ./API/controllers:/app/controllers
+      - ./API/middleware:/app/middleware
+      - ./API/routes:/app/routes
+      - ./API/services:/app/services
+      - ./API/mock-assets:/app/mock-assets
+    env_file:
+      - path: ./API/.env
+        required: false
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - LOCAL_API_HOST=http://localhost:${PORT:-8085}
+    command: ["node", "--watch", "server.js"]
+
+  # =========================================================================
+  # 2. Web / Mock UI & Metro Live-Reload Server (Port 8081)
+  # =========================================================================
+  web:
+    image: node:24-bookworm
+    container_name: aipeer-web
+    working_dir: /app
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./front-end/AI-PEER:/app
+      - node-modules-cache:/app/node_modules
+    environment:
+      # Web (Mode 1) automatically uses Mock LLM via Platform.OS === 'web';
+      # keeping EXPO_PUBLIC_MOCK_LLM=false lets Android (Mode 2) run the real on-device Qwen3.5-2B model!
+      - EXPO_PUBLIC_MOCK_LLM=false
+      - EXPO_PUBLIC_ENABLE_TEST_LOGIN=true
+      - EXPO_PUBLIC_API_BASE_URL=http://localhost:${PORT:-8085}
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      - CI=false
+    command: >
+      bash -c "if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && npx expo start --web --clear --port 8081"
+
+  # =========================================================================
+  # 3. Android App Compilation Container (React Native / Expo bare)
+  # =========================================================================
+  android-builder:
+    build:
+      context: ./front-end/AI-PEER
+      dockerfile: Dockerfile.android
+    container_name: aipeer-android-builder
+    working_dir: /app
+    volumes:
+      # Mount project source
+      - ./front-end/AI-PEER:/app
+      # Keep node_modules & C++/Gradle build directories in fast Linux volumes (avoids slow Windows/macOS bind-mount I/O)
+      - node-modules-cache:/app/node_modules
+      - gradle-cache:/root/.gradle
+      - android-cxx-cache:/app/android/app/.cxx
+      - android-build-cache:/app/android/app/build
+      # Export compiled APKs to host
+      - ./build-output:/output
+    environment:
+      - GRADLE_OPTS=-Dorg.gradle.daemon=true -Dorg.gradle.caching=true -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" -Dorg.gradle.workers.max=4
+      - REACT_NATIVE_ARCHITECTURES=arm64-v8a
+      - CMAKE_BUILD_PARALLEL_LEVEL=4
+    # Default command builds standalone release APK (with embedded JS bundle) and copies to mounted /output directory
+    command: >
+      bash -c "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp app/build/outputs/apk/release/app-release.apk /output/app-release.apk && echo '===> Build successful! APK ready at build-output/app-release.apk'"
+
+volumes:
+  gradle-cache:
+    name: aipeer-gradle-cache
+  node-modules-cache:
+    name: aipeer-node-modules-cache
+  android-cxx-cache:
+    name: aipeer-android-cxx-cache
+  android-build-cache:
+    name: aipeer-android-build-cache
