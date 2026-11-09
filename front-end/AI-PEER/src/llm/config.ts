@@ -33,7 +33,7 @@ export const OLD_MODEL_FILENAMES = ['Qwen3-0.6B-Q4_K_M.gguf', 'Qwen3.5-0.8B-aipe
  * - contextSize: How much conversation history to remember (8192 tokens ≈ 6000 words)
  */
 export const INFERENCE_CONFIG: InferenceConfig = {
-  maxTokens: 256,
+  maxTokens: 150,
   temperature: 0.7,
   topP: 0.9,
   contextSize: 2048,

@@ -31,10 +31,11 @@ type LlamaContextLike = {
       n_predict: number;
       temperature: number;
       top_p: number;
+      penalty_repeat?: number;
       stop: string[];
     },
     callback?: (data: TokenCallbackData) => void
-  ) => Promise<{ text: string }>;
+  ) => Promise<{ text: string; timings?: { predicted_per_second?: number } }>;
   release: () => Promise<void>;
 };
 
@@ -261,6 +262,7 @@ class LLMService {
           n_predict: INFERENCE_CONFIG.maxTokens,
           temperature: INFERENCE_CONFIG.temperature,
           top_p: INFERENCE_CONFIG.topP,
+          penalty_repeat: 1.15,
           stop: STOP_MARKERS, // Stop at chat markers
         },
         onToken
@@ -278,7 +280,12 @@ class LLMService {
 
       const elapsed = Date.now() - startTime;
       const finalSource = result?.text ?? accumulatedRaw;
-      console.log(`Generated ${finalSource.length} chars in ${elapsed}ms`);
+      const tps = result?.timings?.predicted_per_second;
+      console.log(
+        `Generated ${finalSource.length} chars in ${elapsed}ms${
+          tps ? ` (${tps.toFixed(1)} tokens/sec)` : ''
+        }`
+      );
 
       const finalCleanText = sanitizeFinalText(finalSource);
       if (onToken && finalCleanText !== lastVisibleText) {
