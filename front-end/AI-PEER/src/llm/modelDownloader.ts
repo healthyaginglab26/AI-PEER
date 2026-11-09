@@ -29,8 +29,8 @@ export function getModelPath(): string {
 
 /** Check if the model file already exists on disk */
 export async function isModelDownloaded(): Promise<boolean> {
-  if (Platform.OS === 'web' || process.env.EXPO_PUBLIC_MOCK_LLM === 'true') {
-    return true; // Bypass 1.2GB model download on Web (Mode 1) or when mock LLM is explicitly enabled
+  if (Platform.OS === 'web' || process.env.EXPO_PUBLIC_FORCE_MOCK_LLM === 'true') {
+    return true; // Bypass 1.2GB model download on Web (Mode 1)
   }
 
   const modelPath = getModelPath();

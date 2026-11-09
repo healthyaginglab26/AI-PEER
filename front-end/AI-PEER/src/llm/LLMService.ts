@@ -8,7 +8,7 @@
  *
  * This class handles:
  * - Model initialization (loading into memory)
- * - Text generation (inference)
+ * - Text generation (inference) with real-time token streaming
  * - Cleanup (releasing memory)
  *
  * Model: Qwen3.5-2B (non-thinking mode, finetuned on YsK-dev/geriatric-health-advice, Apache 2.0)
@@ -20,14 +20,21 @@ import { getModelPath } from './modelDownloader';
 import { formatPrompt } from './systemPrompt';
 import { ChatMessage } from './types';
 
+type TokenCallbackData = {
+  token: string;
+};
+
 type LlamaContextLike = {
-  completion: (params: {
-    prompt: string;
-    n_predict: number;
-    temperature: number;
-    top_p: number;
-    stop: string[];
-  }) => Promise<{ text: string }>;
+  completion: (
+    params: {
+      prompt: string;
+      n_predict: number;
+      temperature: number;
+      top_p: number;
+      stop: string[];
+    },
+    callback?: (data: TokenCallbackData) => void
+  ) => Promise<{ text: string }>;
   release: () => Promise<void>;
 };
 
@@ -39,6 +46,87 @@ type LlamaModule = {
     n_gpu_layers: number;
   }) => Promise<LlamaContextLike>;
 };
+
+const STOP_MARKERS = ['<|im_end|>', '<|im_start|>'];
+const THINK_OPEN = '<think>';
+const THINK_CLOSE = '</think>';
+
+/**
+ * Strip trailing partial control tag prefixes (e.g. "<", "<|", "<|im", "</", "</think")
+ * so raw marker fragments never flash at the end of the chat bubble while streaming.
+ */
+function stripTrailingPartialTag(text: string): string {
+  const tagsToGuard = [...STOP_MARKERS, THINK_OPEN, THINK_CLOSE];
+  for (const tag of tagsToGuard) {
+    for (let len = tag.length - 1; len >= 1; len--) {
+      const prefix = tag.slice(0, len);
+      if (text.endsWith(prefix)) {
+        return text.slice(0, -len);
+      }
+    }
+  }
+  return text;
+}
+
+/**
+ * Filter raw accumulated tokens during streaming so <think>...</think> blocks
+ * and <|im_end|> / <|im_start|> markers never appear in the UI.
+ */
+export function sanitizeStreamedText(rawText: string): string {
+  let text = rawText.trimStart();
+  if (!text) return '';
+
+  // 1. If the output is still typing the opening "<think>" tag itself, buffer it
+  if (THINK_OPEN.startsWith(text)) {
+    return '';
+  }
+
+  // 2. If a <think> block opened, hide everything until </think> is complete
+  const thinkStartIdx = text.indexOf(THINK_OPEN);
+  if (thinkStartIdx !== -1) {
+    const thinkCloseIdx = text.indexOf(THINK_CLOSE, thinkStartIdx + THINK_OPEN.length);
+    if (thinkCloseIdx === -1) {
+      // Still inside <think>... waiting for </think>
+      return stripTrailingPartialTag(text.slice(0, thinkStartIdx)).trimStart();
+    }
+    text = (
+      text.slice(0, thinkStartIdx) +
+      text.slice(thinkCloseIdx + THINK_CLOSE.length)
+    ).trimStart();
+  }
+
+  // 3. Also handle case where </think> appears without an explicit opening <think>
+  const strayThinkCloseIdx = text.indexOf(THINK_CLOSE);
+  if (strayThinkCloseIdx !== -1) {
+    text = text.slice(strayThinkCloseIdx + THINK_CLOSE.length).trimStart();
+  }
+
+  // 4. Cut off at any complete stop marker (<|im_end|> or <|im_start|>)
+  for (const marker of STOP_MARKERS) {
+    const markerIdx = text.indexOf(marker);
+    if (markerIdx !== -1) {
+      text = text.slice(0, markerIdx);
+    }
+  }
+
+  // 5. Strip any trailing partial tag fragment at the end of the stream
+  text = stripTrailingPartialTag(text);
+
+  return text;
+}
+
+/**
+ * Clean up the final completed response text.
+ */
+export function sanitizeFinalText(rawText: string): string {
+  let text = sanitizeStreamedText(rawText).trim();
+  for (const marker of STOP_MARKERS) {
+    if (text.endsWith(marker)) {
+      text = text.slice(0, -marker.length).trim();
+    }
+  }
+  return text;
+}
 
 class LLMService {
   private static instance: LLMService;
@@ -76,15 +164,37 @@ class LLMService {
       return;
     }
 
-    if (process.env.EXPO_PUBLIC_MOCK_LLM === 'true' || Platform.OS === 'web') {
-      console.log('[MOCK LLM] Initializing lightweight mock LLM service');
+    if (Platform.OS === 'web') {
+      console.log('[MOCK LLM] Initializing lightweight mock LLM service with token streaming (Web only)');
       this.context = {
-        completion: async () => ({
-          text: "Hello! I am your AI PEER exercise assistant running in offline local mode. For balance exercises like Knee Bends and Single Leg Stands, remember to keep a stable support nearby, look straight ahead, and move at a controlled pace."
-        }),
+        completion: async (_params, callback) => {
+          const mockVisibleReply =
+            '[WEB MOCK MODE] Hello! I am your AI-PEER exercise coach. (Note: Real on-device Qwen3.5-2B C++ inference only runs on Android/iOS devices, not in a web browser.)';
+          // Include a simulated <think> block and <|im_end|> stop token to verify streaming sanitization in mock mode
+          const mockTokens = [
+            '<think>',
+            'Checking ',
+            'PEER ',
+            'balance ',
+            'protocol...',
+            '</think>\n',
+            ...mockVisibleReply.match(/\S+\s*/g)!,
+            '<|im_end|>',
+          ];
+
+          let fullRaw = '';
+          for (const tok of mockTokens) {
+            await new Promise((resolve) => setTimeout(resolve, 35));
+            fullRaw += tok;
+            if (callback) {
+              callback({ token: tok });
+            }
+          }
+          return { text: fullRaw };
+        },
         release: async () => {
           this.context = null;
-        }
+        },
       };
       return;
     }
@@ -120,12 +230,16 @@ class LLMService {
   }
 
   /**
-   * Generate a response from the LLM
+   * Generate a response from the LLM with optional token-by-token streaming.
    *
    * @param messages - Conversation history (user and assistant messages)
-   * @returns The generated response text
+   * @param onToken - Optional callback invoked with (token, visibleTextSoFar) as tokens arrive
+   * @returns The final sanitized response text
    */
-  async generate(messages: ChatMessage[]): Promise<string> {
+  async generate(
+    messages: ChatMessage[],
+    onToken?: (token: string, visibleText: string) => void
+  ): Promise<string> {
     if (!this.context) {
       throw new Error('LLM not initialized. Call initialize() first.');
     }
@@ -137,34 +251,41 @@ class LLMService {
 
     console.log('Generating response...');
     const startTime = Date.now();
+    let accumulatedRaw = '';
+    let lastVisibleText = '';
 
     try {
-      const result = await this.context.completion({
-        prompt,
-        n_predict: INFERENCE_CONFIG.maxTokens,
-        temperature: INFERENCE_CONFIG.temperature,
-        top_p: INFERENCE_CONFIG.topP,
-        stop: ['<|im_end|>', '<|im_start|>'], // Stop at chat markers
-      });
+      const result = await this.context.completion(
+        {
+          prompt,
+          n_predict: INFERENCE_CONFIG.maxTokens,
+          temperature: INFERENCE_CONFIG.temperature,
+          top_p: INFERENCE_CONFIG.topP,
+          stop: STOP_MARKERS, // Stop at chat markers
+        },
+        onToken
+          ? (data: TokenCallbackData) => {
+              if (!data?.token) return;
+              accumulatedRaw += data.token;
+              const visibleText = sanitizeStreamedText(accumulatedRaw);
+              if (visibleText !== lastVisibleText) {
+                lastVisibleText = visibleText;
+                onToken(data.token, visibleText);
+              }
+            }
+          : undefined
+      );
 
       const elapsed = Date.now() - startTime;
-      console.log(`Generated ${result.text.length} chars in ${elapsed}ms`);
+      const finalSource = result?.text ?? accumulatedRaw;
+      console.log(`Generated ${finalSource.length} chars in ${elapsed}ms`);
 
-      // Clean up the response
-      let text = result.text.trim();
-
-      // Remove Qwen3 thinking tags (model outputs <think>reasoning</think> before response)
-      const thinkEndIndex = text.indexOf('</think>');
-      if (thinkEndIndex !== -1) {
-        text = text.slice(thinkEndIndex + 8).trim();
+      const finalCleanText = sanitizeFinalText(finalSource);
+      if (onToken && finalCleanText !== lastVisibleText) {
+        onToken('', finalCleanText);
       }
 
-      // Remove any trailing chat markers
-      if (text.endsWith('<|im_end|>')) {
-        text = text.slice(0, -10).trim();
-      }
-
-      return text;
+      return finalCleanText;
     } catch (error) {
       console.error('Generation failed:', error);
       throw error;
