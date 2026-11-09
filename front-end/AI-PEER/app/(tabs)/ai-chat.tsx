@@ -6,7 +6,7 @@
  *
  * Features:
  * - Model download prompt for first-time users
- * - Real-time chat with typing indicators
+ * - Real-time token-by-token streaming with typing indicator fallback
  * - Conversation persistence (24-hour TTL)
  * - Clear conversation option
  */
@@ -74,10 +74,11 @@ export default function AiChatScreen() {
     }
   }, [needsInit, isDownloading, initializeModel]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or stream in
+  const lastMessageContent = messages[messages.length - 1]?.content ?? "";
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
-  }, [messages]);
+  }, [messages.length, lastMessageContent]);
 
   // Handle download start
   async function handleStartDownload() {
@@ -193,15 +194,19 @@ export default function AiChatScreen() {
                     m.role === "user" ? styles.bubbleUser : styles.bubbleAi,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.bubbleText,
-                      m.role === "user" && { color: "#FFFFFF" },
-                      { fontSize: scaled.h1/2 },
-                    ]}
-                  >
-                    {m.content}
-                  </Text>
+                  {m.role === "assistant" && !m.content && isGenerating ? (
+                    <ActivityIndicator size="small" color={warmRed} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.bubbleText,
+                        m.role === "user" && { color: "#FFFFFF" },
+                        { fontSize: scaled.h1/2 },
+                      ]}
+                    >
+                      {m.content}
+                    </Text>
+                  )}
                 </View>
 
                 {m.role === "user" && (
@@ -211,18 +216,6 @@ export default function AiChatScreen() {
                 )}
               </View>
             ))}
-
-            {/* Typing indicator */}
-            {isGenerating && (
-              <View style={[styles.bubbleRow, styles.bubbleRowAi]}>
-                <View style={styles.avatar}>
-                  <Ionicons name="sparkles-outline" size={16} color={warmRed} />
-                </View>
-                <View style={[styles.bubble, styles.bubbleAi]}>
-                  <ActivityIndicator size="small" color={warmRed} />
-                </View>
-              </View>
-            )}
           </ScrollView>
         </View>
 

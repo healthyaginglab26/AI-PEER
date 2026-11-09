@@ -52,7 +52,7 @@ services:
       - WATCHPACK_POLLING=true
       - CI=false
     command: >
-      bash -c "if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && npx expo start --web --clear --port 8081"
+      bash -c "if [ ! -d node_modules/react-native ] || [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then npm ci --prefer-offline --no-audit && cp package-lock.json node_modules/.package-lock.json; fi && npx expo start --web --clear --port 8081"
 
   # =========================================================================
   # 3. Android App Compilation Container (React Native / Expo bare)
@@ -79,7 +79,7 @@ services:
       - CMAKE_BUILD_PARALLEL_LEVEL=4
     # Default command builds standalone release APK (with embedded JS bundle) and copies to mounted /output directory
     command: >
-      bash -c "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ]; then npm ci --prefer-offline --no-audit; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp app/build/outputs/apk/release/app-release.apk /output/app-release.apk && echo '===> Build successful! APK ready at build-output/app-release.apk'"
+      bash -c "if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ] || [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then npm ci --prefer-offline --no-audit && cp package-lock.json node_modules/.package-lock.json; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp app/build/outputs/apk/release/app-release.apk /output/app-release.apk && echo '===> Build successful! APK ready at build-output/app-release.apk'"
 
 volumes:
   gradle-cache:
