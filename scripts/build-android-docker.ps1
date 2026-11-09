@@ -89,6 +89,14 @@ Write-Host "==========================================================" -Foregro
 
 if ($Install -or $Launch) {
     Write-Host ""
+    if ($BuildType -eq "debug") {
+        Write-Host "==> Ensuring Metro & API containers are running before launching Debug APK..." -ForegroundColor Cyan
+        & (Join-Path $ScriptDir "start-dev.ps1")
+    } else {
+        Write-Host "==> Ensuring Backend API container is running..." -ForegroundColor Cyan
+        docker compose up -d api
+    }
+
     Write-Host "==> Checking for connected Android phone via ADB..." -ForegroundColor Cyan
     if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
         Write-Warning "'adb' command not found on PATH. Please install Android Platform Tools to enable auto-installation."

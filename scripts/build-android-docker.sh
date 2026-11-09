@@ -78,6 +78,14 @@ echo "=========================================================="
 
 if [ "$AUTO_INSTALL" = true ]; then
   echo ""
+  if [ "$BUILD_TYPE" = "debug" ]; then
+    echo "==> Ensuring Metro & API containers are running before launching Debug APK..."
+    "$SCRIPT_DIR/start-dev.sh"
+  else
+    echo "==> Ensuring Backend API container is running..."
+    docker compose up -d api
+  fi
+
   echo "==> Checking for connected Android phone via ADB..."
   if ! command -v adb >/dev/null 2>&1; then
     echo "WARNING: 'adb' command not found on PATH. Please install Android Platform Tools."
