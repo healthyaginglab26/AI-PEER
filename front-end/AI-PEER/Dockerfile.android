@@ -11,7 +11,9 @@ LABEL description="Deterministic Android compilation container for AI-PEER React
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1. Install system utilities and OpenJDK 17
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# (Disable apt Check-Date/Check-Valid-Until for clock skew, disable HTTP pipelining, and enable 5 automatic retries for network/DNS drops)
+RUN printf 'Acquire::Check-Valid-Until "false";\nAcquire::Check-Date "false";\nAcquire::Retries "5";\nAcquire::http::Pipeline-Depth "0";\n' > /etc/apt/apt.conf.d/99apt-resilience && \
+    apt-get update && apt-get install -y --fix-missing --no-install-recommends \
     ca-certificates \
     curl \
     git \
@@ -23,8 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Install Node.js 24 (pinned by .nvmrc)
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+RUN curl -fsSL --retry 5 --retry-delay 2 https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --fix-missing --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Configure Java and Android environment paths
@@ -35,7 +37,7 @@ ENV PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-too
 
 # 4. Download and setup Android command-line tools
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
-    curl -fsSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+    curl -fsSL --retry 5 --retry-delay 2 -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
     unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extracted && \
     mv /tmp/cmdline-tools-extracted/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
     rm -rf /tmp/cmdline-tools-extracted /tmp/cmdline-tools.zip

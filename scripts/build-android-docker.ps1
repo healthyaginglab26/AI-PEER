@@ -57,6 +57,9 @@ try {
     exit 1
 }
 
+# Ensure local dev .env files exist (falls back to .env.example if missing)
+& (Join-Path $ScriptDir "setup-env.ps1")
+
 Write-Host "==> Building Android builder Docker image..." -ForegroundColor Green
 docker compose build android-builder
 

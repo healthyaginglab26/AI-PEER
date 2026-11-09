@@ -22,46 +22,55 @@ To clone and run AI-PEER, you only need two core tools installed on your host ma
 
 ## Quickstart (Zero to Running in 3 Steps)
 
-### Step 1: Clone Repository & Configure Secrets
+### Step 1: Clone Repository & Configure Local Dev Environment
 
 ```bash
 git clone https://github.com/healthyaginglab26/AI-PEER.git
 cd AI-PEER
 ```
 
-Configure your local environment variables from the provided examples:
+Initialize your **local development** `.env` files from the provided `.env.example` templates (skips any `.env` file that already exists so you don't overwrite local edits):
 
 ```bash
-# 1. Configure API backend environment
-cp API/.env.example API/.env
+# macOS / Linux / Git Bash:
+./scripts/setup-env.sh
 
-# 2. Configure Mobile frontend environment
-cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env
+# Windows (PowerShell):
+.\scripts\setup-env.ps1
 ```
 
-### Key Environment Variables
+*(Or manually copy them via `cp API/.env.example API/.env` and `cp front-end/AI-PEER/.env.example front-end/AI-PEER/.env`).*
 
-**These only ever need to be modified if you are starting for production.**
+> [!IMPORTANT]
+> **Local Dev vs. Production Environment Files:**
+> The `.env.example` templates are **pre-configured strictly for zero-credential local development** (`NODE_ENV=development`, `MOCK_AUTH=true`, deterministic `123456` test OTPs, 1-click test login bypass buttons, and `localhost` URLs).
+> - **For Local Development:** No edits or cloud keys are needed—they work out of the box right after running `setup-env`.
+> - **For Production Deployments:** Do **not** use the mock defaults from `.env.example`. Production runs require real GCP/Firebase credentials, your live Cloud Run URL, and disabling all mock/test flags (see tables below).
+
+### Environment Variables Reference (Local Dev Defaults vs. Production)
 
 **API Backend (`API/.env`):**
-| Variable | Description | Source / Default |
-|---|---|---|
-| `GCS_PROJECT_ID` | GCP Project ID for Storage & Firebase Admin | Team Lead / GCP Console |
-| `GCS_CLIENT_EMAIL` | Service Account email for signing URLs | Service account JSON |
-| `GCS_PRIVATE_KEY` | Service Account private key with literal `\n` | Service account JSON |
-| `GCS_BUCKET_NAME` | Storage bucket for exercise demo videos | `aipeer_videos` |
-| `GCS_MODEL_BUCKET` | Storage bucket for fine-tuned LLM model | `qwenfinetune` |
-| `IDENTITY_PLATFORM_API_KEY` | Identity Platform API key for SMS 2FA | Firebase Console → General |
-| `PORT` | Container internal listening port for Express API | `8080` (mapped to host `8085` by default) |
-| `NODE_ENV` | Runtime environment | `development` |
+| Variable | Purpose | Local Dev Default (`.env.example`) | Production Requirement |
+|---|---|---|---|
+| `NODE_ENV` | Runtime environment | `development` | `production` |
+| `PORT` | Container internal listening port | `8080` *(mapped to host `8085`)* | `8080` *(managed by Cloud Run)* |
+| `MOCK_AUTH` | Deterministic `123456` OTP & mock store | `true` *(Dev only)* | `false` or unset |
+| `GCS_PROJECT_ID` | GCP Project ID for Storage & Firebase Admin | `ai-peer` | Real GCP Project ID |
+| `GCS_CLIENT_EMAIL` | Service Account email for signing URLs | *Empty (serves local mock assets)* | Service account email |
+| `GCS_PRIVATE_KEY` | Service Account private key with literal `\n` | *Empty (serves local mock assets)* | Service account private key |
+| `GCS_BUCKET_NAME` | Storage bucket for exercise demo videos | `aipeer_videos` | Production video bucket name |
+| `GCS_MODEL_BUCKET` | Storage bucket for fine-tuned LLM model | `qwenfinetune` | Production model bucket name |
+| `IDENTITY_PLATFORM_API_KEY` | Identity Platform API key for SMS 2FA | *Empty (uses mock OTP `123456`)* | Real Firebase / Identity Platform key |
 
 **Mobile Frontend (`front-end/AI-PEER/.env`):**
-| Variable | Description | Source / Default |
-|---|---|---|
-| `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase Web API key | Firebase Console |
-| `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | Firebase Console |
-| `EXPO_PUBLIC_API_BASE_URL` | Local API URL for development | Default: `http://localhost:8085` *(matches docker-compose default; use `http://10.0.2.2:8085` in Android Emulator; use `http://localhost:8085` with `adb reverse tcp:8085 tcp:8085` or your PC's local Wi-Fi IP for physical devices)* |
-| `EXPO_PUBLIC_ENABLE_TEST_LOGIN` | Enables 1-click test login buttons on local builds | `true` |
+| Variable | Purpose | Local Dev Default (`.env.example`) | Production Requirement |
+|---|---|---|---|
+| `EXPO_PUBLIC_API_BASE_URL` | Backend API base URL | `http://localhost:8085` *(use `http://10.0.2.2:8085` for Android Emulator, or `adb reverse tcp:8085 tcp:8085` / LAN IP for physical phone)* | Live Cloud Run HTTPS URL (`https://aipeer-api-...run.app`) |
+| `EXPO_PUBLIC_ENABLE_TEST_LOGIN` | Shows 1-click test login bypass buttons | `true` *(Dev only)* | `false` |
+| `EXPO_PUBLIC_MOCK_LLM` | Uses canned responses instead of 1.2 GB LLM | `false` *(Web Mode 1 automatically uses Mock LLM via `Platform.OS === 'web'`; `false` lets Android run the real 1.2 GB model)* | `false` |
+| `EXPO_PUBLIC_USE_EMULATOR` | Connects client SDK to local emulator/mock | `true` *(Dev only)* | `false` |
+| `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase Web API key | `mock-api-key-for-local-dev` | Real Firebase Web API key |
+| `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | `ai-peer` | Real Firebase Project ID |
 
 ---
 
@@ -159,6 +168,7 @@ If you need the real phone camera (`VisionCamera`) or real 1.2 GB `llama.rn` mod
 # macOS / Linux / Git Bash:
 ./scripts/build-android-docker.sh debug --install
 ```
+If you are experiencing "Permission denied" issues, navigate to troubleshooting step 5.
 
 **2. Start the Metro live-reload server:**
 ```powershell
@@ -188,6 +198,9 @@ adb reverse tcp:8085 tcp:8085
 # Full Native Reset (only needed if you add/change native Android packages in package.json):
 docker compose down
 docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache
+# macOS / Linux / Git Bash:
+./scripts/build-android-docker.sh debug --install
+# Windows (PowerShell):
 .\scripts\build-android-docker.ps1 -BuildType debug -Install
 ```
 
@@ -349,12 +362,18 @@ failed to connect to the docker API at ...
   - **Permanent Root `.env`:** Create `AI-PEER/.env` with `PORT=8086`.
   - **Update Mobile Frontend:** Remember to update `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to match the chosen host port (e.g., `http://localhost:8086`).
 
-### 5. Windows PowerShell Execution Policy Restrictions
-- **Symptom:** `File ...build-android-docker.ps1 cannot be loaded because running scripts is disabled on this system.`
-- **Solution:** Run with the bypass flag:
+### 5. Script Execution Permissions (Windows PowerShell & Linux / macOS)
+- **Windows PowerShell (`running scripts is disabled on this system`):**
+  Run with the bypass flag:
   ```powershell
   powershell -ExecutionPolicy Bypass -File .\scripts\build-android-docker.ps1
   ```
+- **Linux / macOS (`Permission denied` or `sudo: ./scripts/...: command not found`):**
+  Ensure the `.sh` scripts have executable permissions set:
+  ```bash
+  chmod +x scripts/*.sh front-end/AI-PEER/scripts/*.sh
+  ```
+  *(Tip for Linux users: To run `docker` and `./scripts/build-android-docker.sh` without `sudo`, add your user to the `docker` group via `sudo usermod -aG docker $USER` and log out/in).*
 
 ### 6. Rebuilding containers without cache
 If dependencies in `package.json` or Dockerfiles change:
@@ -393,3 +412,14 @@ docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cx
   adb reverse tcp:8085 tcp:8085
   ```
 - **Solution (Wi-Fi):** Set `EXPO_PUBLIC_API_BASE_URL` in `front-end/AI-PEER/.env` to your host computer's local Wi-Fi IP (e.g., `http://192.168.1.150:8085`), then recompile the APK with `.\scripts\build-android-docker.ps1`.
+
+### 10. System Clock Skew (`Release file ... is not valid yet` or SSL / Auth Errors)
+- **Cause:** Dual-booting Windows and Linux or waking a laptop/WSL2 VM from sleep can leave the system clock behind real UTC time. While `Dockerfile.android` ignores `apt` date checks automatically, large clock drift can still cause HTTPS certificate or Firebase token validation errors.
+- **Solution (Linux):** Enable network time synchronization:
+  ```bash
+  sudo timedatectl set-ntp true
+  ```
+- **Solution (Windows WSL2):** Resync the WSL2 kernel clock from PowerShell:
+  ```powershell
+  wsl -d docker-desktop -e hwclock -s
+  ```

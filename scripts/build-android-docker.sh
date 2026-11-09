@@ -50,6 +50,9 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Ensure local dev .env files exist (falls back to .env.example if missing)
+"$SCRIPT_DIR/setup-env.sh"
+
 echo "==> Building Android builder Docker image..."
 docker compose build android-builder
 
