@@ -28,7 +28,7 @@ services:
       - NODE_ENV=development
       - PORT=8080
       - LOCAL_API_HOST=http://localhost:${PORT:-8085}
-    command: ["node", "--watch", "server.js"]
+    command: [ "node", "--watch", "server.js" ]
 
   # =========================================================================
   # 2. Web / Mock UI & Metro Live-Reload Server (Port 8081)
@@ -36,12 +36,14 @@ services:
   web:
     image: node:24-bookworm
     container_name: aipeer-web
+    restart: unless-stopped
     working_dir: /app
     ports:
       - "8081:8081"
     volumes:
       - ./front-end/AI-PEER:/app
       - node-modules-cache:/app/node_modules
+      - metro-cache:/tmp/metro-cache
     environment:
       # Web (Mode 1) automatically uses Mock LLM via Platform.OS === 'web';
       # keeping EXPO_PUBLIC_MOCK_LLM=false lets Android (Mode 2) run the real on-device Qwen3.5-2B model!
@@ -53,7 +55,7 @@ services:
       - WATCHPACK_POLLING=true
       - CI=false
     command: >
-      bash -c "if [ ! -f .env ] && [ -f .env.example ]; then cp .env.example .env; fi && if [ ! -d node_modules/react-native ] || [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then npm ci --prefer-offline --no-audit && cp package-lock.json node_modules/.package-lock.json; fi && rm -rf /tmp/metro-* .expo node_modules/.cache && npx expo start --web --clear --port 8081"
+      bash -c "if [ ! -f .env ] && [ -f .env.example ]; then cp .env.example .env; fi && if [ ! -d node_modules/react-native ] || [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then npm ci --prefer-offline --no-audit && cp package-lock.json node_modules/.package-lock.json; fi && npx expo start --web --port 8081"
 
   # =========================================================================
   # 3. Android App Compilation Container (React Native / Expo bare)
@@ -88,6 +90,8 @@ volumes:
     name: aipeer-gradle-cache
   node-modules-cache:
     name: aipeer-node-modules-cache
+  metro-cache:
+    name: aipeer-metro-cache
   android-cxx-cache:
     name: aipeer-android-cxx-cache
   android-build-cache:
