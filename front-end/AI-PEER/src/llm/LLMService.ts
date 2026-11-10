@@ -165,8 +165,8 @@ class LLMService {
       return;
     }
 
-    if (Platform.OS === 'web') {
-      console.log('[MOCK LLM] Initializing lightweight mock LLM service with token streaming (Web only)');
+    if (Platform.OS === 'web' || process.env.EXPO_PUBLIC_FORCE_MOCK_LLM === 'true') {
+      console.log('[MOCK LLM] Initializing lightweight mock LLM service with token streaming (Web / forced mock)');
       this.context = {
         completion: async (_params, callback) => {
           const mockVisibleReply =
@@ -262,7 +262,7 @@ class LLMService {
           n_predict: INFERENCE_CONFIG.maxTokens,
           temperature: INFERENCE_CONFIG.temperature,
           top_p: INFERENCE_CONFIG.topP,
-          penalty_repeat: 1.15,
+          penalty_repeat: INFERENCE_CONFIG.repeatPenalty,
           stop: STOP_MARKERS, // Stop at chat markers
         },
         onToken

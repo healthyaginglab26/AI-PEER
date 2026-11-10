@@ -38,5 +38,6 @@ export type InferenceConfig = {
   maxTokens: number;
   temperature: number;
   topP: number;
+  repeatPenalty: number;
   contextSize: number;
 };
