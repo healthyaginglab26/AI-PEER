@@ -76,8 +76,8 @@ export function formatPrompt(
     }
   }
 
-  // Signal that assistant should respond
-  prompt += `<|im_start|>assistant\n`;
+  // Signal that assistant should respond directly (prefill empty <think></think> to bypass Qwen3.5 chain-of-thought delay)
+  prompt += `<|im_start|>assistant\n<think>\n\n</think>\n\n`;
 
   return prompt;
 }

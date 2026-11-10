@@ -16,8 +16,8 @@ consents — calls the backend to obtain a 1-hour signed GCS URL and streams the
 skips the download: `LLMContext` checks the file on disk and calls `LLMService.initialize()`
 to load the weights into llama.rn. When the user sends a message, `LLMService.generate()`
 constructs a full ChatML prompt (system prompt + conversation history + user turn) and calls
-llama.rn's `completion()`, which returns the full response text once generation finishes;
-the completed text is written into React state, re-rendering the chat bubble. Text-to-speech
+llama.rn's `completion()` with a streaming token callback, progressively rendering sanitized
+tokens into the assistant chat bubble in real time. Text-to-speech
 is available in the app via `src/tts.ts:speak`, but as of the current codebase the AI Chat
 screen does not invoke it — TTS is used by the vision pipeline for exercise countdowns and
 rep announcements only. All inference is local: user messages never leave the device.
@@ -121,7 +121,7 @@ which triggers the `useEffect` at `ai-chat.tsx:71-75` to call `initializeModel()
 ```ts
 this.context = await llamaModule.initLlama({
   model: modelPath,
-  n_ctx: INFERENCE_CONFIG.contextSize,   // 8192 tokens
+  n_ctx: INFERENCE_CONFIG.contextSize,   // 2048 tokens
   n_threads: 4,
   n_gpu_layers: 0,                        // CPU-only
 });
@@ -164,16 +164,12 @@ const prompt = formatPrompt(
 ```
 
 Then `this.context.completion(...)` is called with:
-- `prompt` — the full ChatML string
-- `n_predict: INFERENCE_CONFIG.maxTokens` (512)
-- `temperature: 0.7`, `top_p: 0.9`
+- `prompt` — the full ChatML string (including an empty `<think>\n\n</think>\n\n` prefill to bypass Qwen3.5 chain-of-thought latency)
+- `n_predict: INFERENCE_CONFIG.maxTokens` (150)
+- `temperature: 0.7`, `top_p: 0.9`, `penalty_repeat: 1.15`
 - `stop: ['<|im_end|>', '<|im_start|>']`
 
-`completion()` is a single-call (non-streaming) interface: it blocks until the model
-finishes generating and returns `{ text: string }`. There is no token-by-token streaming
-in the current integration — the chat bubble only appears once generation is complete.
-The `ActivityIndicator` spinner inside the bubble row (`ai-chat.tsx:216-225`) is visible
-for the entire duration.
+`completion()` streams tokens via its callback parameter (`onToken`), calling `sanitizeStreamedText()` on the accumulated output so partial control tags or `<think>...</think>` blocks are never shown in the UI. Once generation finishes, `LLMService.generate()` logs total duration and throughput (`tokens/sec` from `result.timings.predicted_per_second`).
 
 **5. Response cleanup** (`LLMService.ts:144-157`)
 
@@ -249,8 +245,10 @@ fear acknowledgment, chest pain redirection, exercise instruction, and fatigue h
 
 **ChatML formatting** (`systemPrompt.ts:66-83`): `formatPrompt` wraps the system prompt
 with `<|im_start|>system` / `<|im_end|>`, then interleaves `<|im_start|>user` and
-`<|im_start|>assistant` blocks for each turn. The final line is `<|im_start|>assistant\n`
-(no closing tag) to signal where the model should begin its response.
+`<|im_start|>assistant` blocks for each turn. The final line is
+`<|im_start|>assistant\n<think>\n\n</think>\n\n` (prefilling an empty think block) to
+signal that the model should respond immediately without spending tokens on hidden
+chain-of-thought reasoning.
 
 Note from the training plan: the inference-time system prompt intentionally diverges from
 the training-time one in `Training/slm/finetune.py`. The training prompt is a historical
@@ -369,10 +367,9 @@ change the training-time system prompt.
 ## Performance and Device Considerations
 
 **Inference speed.** The `LLMService.generate` method logs
-`Generated N chars in Xms` (`LLMService.ts:141-142`). No explicit tokens-per-second
-figure is documented in the codebase. With `n_gpu_layers: 0` on an iPhone 15 Pro, expect
-roughly 8-12 tokens/sec; older devices (iPhone 12 and below) will be slower. The 512-token
-cap (`INFERENCE_CONFIG.maxTokens`) keeps wall time under ~60 seconds on typical hardware.
+`Generated N chars in Xms (Y.Z tokens/sec)` using `result.timings.predicted_per_second`. With `n_gpu_layers: 0` on a modern phone, expect
+roughly 8-12 tokens/sec; older devices will be slower. The 150-token
+cap (`INFERENCE_CONFIG.maxTokens`) and empty `<think></think>` prefill keep responses fast and concise on typical hardware.
 
 **Memory.** The comment at `LLMService.ts:6` describes the model as "~1.2GB" in memory.
 `initialize()` is commented as taking "~5-10 seconds" (`LLMService.ts:71`). On devices
@@ -382,12 +379,10 @@ which propagates to `initializeModel` in `LLMContext.tsx:215-220`, which sets
 `state.error` and rethrows. The AI Chat screen renders the error string from `useLLM().error`
 in the subtitle row.
 
-**Context window.** `n_ctx: 8192` tokens (~6,000 words). No explicit truncation is
+**Context window.** `n_ctx: 2048` tokens (~1,500 words). No explicit truncation is
 implemented in the current code — if `conversation.messages` grows long enough that
-the formatted ChatML prompt exceeds 8192 tokens, llama.rn will silently truncate the
-front of the context. For typical users with the 24-hour TTL, this is unlikely to be
-hit in practice, but long multi-session conversations within a single TTL window could
-approach the limit.
+the formatted ChatML prompt exceeds 2048 tokens, llama.rn will silently truncate the
+front of the context.
 
 **Thermal throttling.** `n_gpu_layers: 0` avoids the GPU, so the main thermal vector
 is the 4 CPU cores held at near-100% during generation. The app does not implement
@@ -423,13 +418,7 @@ the chat header shows `t("ai-chat.loadingModel")` as the subtitle
 full-screen loading overlay; the screen is usable but the input is grayed out. This is
 the expected design.
 
-**No token streaming.** llama.rn's `completion()` is called without a streaming callback.
-The assistant bubble only appears after the full response is ready. On slow hardware with
-long responses (up to 512 tokens), the gap between send and render can be several tens of
-seconds. The `ActivityIndicator` in the bubble row is the only visible feedback. If
-token-by-token streaming is added in the future, the `completion()` call in
-`LLMService.generate` is the change point — llama.rn supports an optional `onToken`
-callback.
+**Token streaming and AsyncStorage persistence.** `llama.rn`'s `completion()` streams tokens in real time into the placeholder assistant message in `LLMContext.sendMessage`. While `state.isGenerating` is `true`, `LLMContext` skips writing `allConversations` to `AsyncStorage` on every token tick and persists once generation finishes.
 
 **Singleton survives navigation but not process kill.** The `LLMService` singleton
 persists across tab navigations, so navigating away from AI Chat and back does not reload
@@ -485,7 +474,7 @@ User                    App (React Native)                   API / GCS
  |                             |                                  |
  |                             |-- initializeModel()              |
  |                             |   LLMService.initialize()        |
- |                             |   initLlama({ n_ctx:8192,        |
+ |                             |   initLlama({ n_ctx:2048,        |
  |                             |     n_threads:4, n_gpu_layers:0 })|
  |                             |   (LLMService.ts:96-101)         |
  |<-- model loads (~5-10s) ----|                                  |
@@ -497,8 +486,8 @@ User                    App (React Native)                   API / GCS
  |                             |   send(trimmed)                  |
  |                             |   (ai-chat.tsx:96-106)           |
  |                             |                                  |
- |<-- user bubble appears -----|-- user message appended to       |
- |   ActivityIndicator shown   |   conversation.messages          |
+ |<-- user bubble appears -----|-- user message + placeholder     |
+ |   streaming bubble starts   |   assistant bubble appended      |
  |                             |   isGenerating = true            |
  |                             |   (LLMContext.tsx:244-256)       |
  |                             |                                  |
@@ -508,11 +497,11 @@ User                    App (React Native)                   API / GCS
  |                             |   (systemPrompt.ts:66-83)        |
  |                             |                                  |
  |                             |-- context.completion({           |
- |                             |   prompt, n_predict:512,         |
+ |                             |   prompt, n_predict:150,         |
  |                             |   temperature:0.7, top_p:0.9,    |
- |                             |   stop:['<|im_end|>',…]})        |
- |                             |   (LLMService.ts:133-138)        |
- |                             |   [blocks until done — on-device]|
+ |                             |   penalty_repeat:1.15,           |
+ |                             |   stop:['<|im_end|>',…]}, onToken)|
+ |                             |   [streams tokens — on-device]   |
  |                             |                                  |
  |                             |-- strip <think>…</think> if any  |
  |                             |   (LLMService.ts:148-152)        |

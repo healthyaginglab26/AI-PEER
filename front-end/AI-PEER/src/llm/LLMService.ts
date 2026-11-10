@@ -31,10 +31,11 @@ type LlamaContextLike = {
       n_predict: number;
       temperature: number;
       top_p: number;
+      penalty_repeat?: number;
       stop: string[];
     },
     callback?: (data: TokenCallbackData) => void
-  ) => Promise<{ text: string }>;
+  ) => Promise<{ text: string; timings?: { predicted_per_second?: number } }>;
   release: () => Promise<void>;
 };
 
@@ -164,12 +165,12 @@ class LLMService {
       return;
     }
 
-    if (process.env.EXPO_PUBLIC_MOCK_LLM === 'true' || Platform.OS === 'web') {
-      console.log('[MOCK LLM] Initializing lightweight mock LLM service with token streaming');
+    if (Platform.OS === 'web' || process.env.EXPO_PUBLIC_FORCE_MOCK_LLM === 'true') {
+      console.log('[MOCK LLM] Initializing lightweight mock LLM service with token streaming (Web / forced mock)');
       this.context = {
         completion: async (_params, callback) => {
           const mockVisibleReply =
-            'Hello! I am your AI-PEER exercise coach running in local dev mode. For balance exercises like Knee Bends and One Leg Stand, keep a sturdy chair nearby, look straight ahead, and move at a steady pace.';
+            '[WEB MOCK MODE] Hello! I am your AI-PEER exercise coach. (Note: Real on-device Qwen3.5-2B C++ inference only runs on Android/iOS devices, not in a web browser.)';
           // Include a simulated <think> block and <|im_end|> stop token to verify streaming sanitization in mock mode
           const mockTokens = [
             '<think>',
@@ -261,6 +262,7 @@ class LLMService {
           n_predict: INFERENCE_CONFIG.maxTokens,
           temperature: INFERENCE_CONFIG.temperature,
           top_p: INFERENCE_CONFIG.topP,
+          penalty_repeat: INFERENCE_CONFIG.repeatPenalty,
           stop: STOP_MARKERS, // Stop at chat markers
         },
         onToken
@@ -278,7 +280,12 @@ class LLMService {
 
       const elapsed = Date.now() - startTime;
       const finalSource = result?.text ?? accumulatedRaw;
-      console.log(`Generated ${finalSource.length} chars in ${elapsed}ms`);
+      const tps = result?.timings?.predicted_per_second;
+      console.log(
+        `Generated ${finalSource.length} chars in ${elapsed}ms${
+          tps ? ` (${tps.toFixed(1)} tokens/sec)` : ''
+        }`
+      );
 
       const finalCleanText = sanitizeFinalText(finalSource);
       if (onToken && finalCleanText !== lastVisibleText) {

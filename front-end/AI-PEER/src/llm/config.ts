@@ -27,16 +27,18 @@ export const OLD_MODEL_FILENAMES = ['Qwen3-0.6B-Q4_K_M.gguf', 'Qwen3.5-0.8B-aipe
 /**
  * Inference configuration
  *
- * - maxTokens: Maximum response length (512 = ~400 words)
+ * - maxTokens: Maximum response length (150 = concise ~3-sentence coaching replies)
  * - temperature: Randomness (0.7 = balanced creativity/coherence)
  * - topP: Nucleus sampling (0.9 = consider top 90% probability tokens)
- * - contextSize: How much conversation history to remember (8192 tokens ≈ 6000 words)
+ * - repeatPenalty: Penalty against repeating phrases (1.15 = prevents small-model loops)
+ * - contextSize: Conversation context window (2048 tokens for fast on-device evaluation)
  */
 export const INFERENCE_CONFIG: InferenceConfig = {
-  maxTokens: 512,
+  maxTokens: 150,
   temperature: 0.7,
   topP: 0.9,
-  contextSize: 8192,
+  repeatPenalty: 1.15,
+  contextSize: 2048,
 };
 
 /** How long before conversations auto-archive (24 hours in milliseconds) */
