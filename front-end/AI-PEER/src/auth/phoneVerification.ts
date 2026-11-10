@@ -26,7 +26,11 @@ type Pending = {
 // the password until the backend has checked it.
 let pending: Pending | null = null;
 
-export const nativePhoneAuthAvailable = Platform.OS === "android";
+const isMockFirebase =
+  process.env.EXPO_PUBLIC_USE_EMULATOR === "true" ||
+  process.env.EXPO_PUBLIC_FIREBASE_API_KEY === "mock-api-key-for-local-dev";
+
+export const nativePhoneAuthAvailable = Platform.OS === "android" && !isMockFirebase;
 
 function nativeAuth() {
   // Lazy require so platforms without the native module never load it.

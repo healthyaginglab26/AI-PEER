@@ -8,7 +8,7 @@
  * This context handles:
  * - Download state and progress
  * - Model initialization state
- * - Generation state (for loading indicators)
+ * - Generation state (for loading indicators and real-time token streaming)
  * - Multiple conversation management with 24-hour TTL
  *
  * PHI INVARIANT: conversations live in AsyncStorage on THIS device only.
@@ -163,19 +163,18 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
-  // Save conversations whenever they change. filter expired entries before
-  // persisting so a conversation that aged past 24h in memory never gets
-  // re-written to disk — the load-time filter alone isn't enough once state
-  // has been hydrated.
+  // Save conversations once generation finishes (or when conversations change outside active streaming).
+  // Skipping AsyncStorage writes while state.isGenerating is true avoids writing to disk on every
+  // streamed token and persists the final completed response when generation finishes.
   useEffect(() => {
-    if (allConversations.length > 0) {
+    if (allConversations.length > 0 && !state.isGenerating) {
       const toPersist = filterExpiredConversations(allConversations);
       AsyncStorage.setItem(
         STORAGE_KEYS.conversations,
         JSON.stringify(toPersist)
       ).catch(console.error);
     }
-  }, [allConversations]);
+  }, [allConversations, state.isGenerating]);
 
   // Continuous sweep: every 15 minutes and whenever the app returns to the
   // foreground, drop any conversation that has aged past the TTL. updating
@@ -253,7 +252,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /** Send a message and get a response */
+  /** Send a message and stream the assistant response token-by-token */
   const sendMessage = useCallback(
     async (content: string): Promise<string> => {
       if (!LLMService.isReady()) {
@@ -264,45 +263,73 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         throw new Error('No conversation');
       }
 
-      // Add user message
+      const now = Date.now();
       const userMessage: ChatMessage = {
         id: generateId(),
         role: 'user',
         content,
-        timestamp: Date.now(),
+        timestamp: now,
       };
 
-      const updatedMessages = [...conversation.messages, userMessage];
+      const assistantMessageId = generateId();
+      const placeholderAssistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: now + 1,
+      };
 
-      // Update conversation in allConversations
+      const promptMessages = [...conversation.messages, userMessage];
+
+      setState((s) => ({ ...s, isGenerating: true, error: null }));
+
+      // Add user message and empty assistant bubble immediately so tokens can stream into it
       setAllConversations((convos) =>
         convos.map((c) =>
           c.id === currentConversationId
-            ? { ...c, messages: updatedMessages, lastMessageAt: Date.now() }
+            ? {
+                ...c,
+                messages: [...promptMessages, placeholderAssistantMessage],
+                lastMessageAt: Date.now(),
+              }
             : c
         )
       );
 
-      setState((s) => ({ ...s, isGenerating: true, error: null }));
-
       try {
-        // Generate response
-        const response = await LLMService.generate(updatedMessages);
+        // Stream response tokens progressively into the assistant bubble
+        const response = await LLMService.generate(
+          promptMessages,
+          (_token, visibleText) => {
+            setAllConversations((convos) =>
+              convos.map((c) =>
+                c.id === currentConversationId
+                  ? {
+                      ...c,
+                      messages: c.messages.map((m) =>
+                        m.id === assistantMessageId
+                          ? { ...m, content: visibleText }
+                          : m
+                      ),
+                      lastMessageAt: Date.now(),
+                    }
+                  : c
+              )
+            );
+          }
+        );
 
-        // Add assistant message
-        const assistantMessage: ChatMessage = {
-          id: generateId(),
-          role: 'assistant',
-          content: response,
-          timestamp: Date.now(),
-        };
-
+        // Finalize assistant message content when generation completes
         setAllConversations((convos) =>
           convos.map((c) =>
             c.id === currentConversationId
               ? {
                   ...c,
-                  messages: [...c.messages, assistantMessage],
+                  messages: c.messages.map((m) =>
+                    m.id === assistantMessageId
+                      ? { ...m, content: response, timestamp: Date.now() }
+                      : m
+                  ),
                   lastMessageAt: Date.now(),
                 }
               : c
@@ -312,6 +339,19 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         return response;
       } catch (error) {
         console.error('Generation error:', error);
+        // Remove empty placeholder assistant bubble if generation failed before producing text
+        setAllConversations((convos) =>
+          convos.map((c) =>
+            c.id === currentConversationId
+              ? {
+                  ...c,
+                  messages: c.messages.filter(
+                    (m) => !(m.id === assistantMessageId && !m.content)
+                  ),
+                }
+              : c
+          )
+        );
         setState((s) => ({
           ...s,
           error: `Generation failed: ${error}`,

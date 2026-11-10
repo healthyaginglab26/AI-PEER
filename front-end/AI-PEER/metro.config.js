@@ -7,14 +7,17 @@ const config = getDefaultConfig(__dirname);
 config.resolver.assetExts.push('tflite');
 
 // Resolve @/ path alias from tsconfig.json (maps @/* to ./* from project root)
-// and stub native-only camera/worklet/llama modules when bundling for Web mode
+// and stub native-only camera/worklet/firebase modules when bundling for Web mode
+const WEB_STUBBED_MODULES = new Set([
+  'react-native-vision-camera',
+  'react-native-worklets-core',
+  '@react-native-firebase/auth',
+  '@react-native-firebase/app',
+]);
+
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (
-    platform === 'web' &&
-    (moduleName === 'react-native-vision-camera' ||
-      moduleName === 'react-native-worklets-core')
-  ) {
+  if (platform === 'web' && WEB_STUBBED_MODULES.has(moduleName)) {
     return {
       filePath: path.join(__dirname, 'src/vision/visionCameraWebStub.js'),
       type: 'sourceFile',

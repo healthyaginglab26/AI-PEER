@@ -50,6 +50,9 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Ensure local dev .env files exist (falls back to .env.example if missing)
+"$SCRIPT_DIR/setup-env.sh"
+
 echo "==> Building Android builder Docker image..."
 docker compose build android-builder
 
@@ -64,7 +67,7 @@ else
 fi
 
 echo "==> Running compilation task '$GRADLE_TASK' inside container..."
-CONTAINER_CMD="set -e && if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -d node_modules/react-native ]; then echo '==> Installing npm dependencies (first-time volume setup)...' && npm ci --prefer-offline --no-audit; else echo '==> Using cached node_modules volume (skipping npm ci)...'; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew $GRADLE_TASK -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp $APK_PATH /output/$(basename "$OUT_APK") && echo '===> Successfully copied APK to host output directory.'"
+CONTAINER_CMD="set -e && if [ ! -f android/app/debug.keystore ]; then keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'; fi && if [ ! -f android/app/google-services.json ] && [ -f android/app/google-services.json.example ]; then echo '==> Creating local mock google-services.json from template...' && cp android/app/google-services.json.example android/app/google-services.json; fi && if [ ! -d node_modules/react-native ] || [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then echo '==> Installing npm dependencies...' && npm ci --prefer-offline --no-audit && cp package-lock.json node_modules/.package-lock.json; else echo '==> Using cached node_modules volume (skipping npm ci)...'; fi && cd android && sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew $GRADLE_TASK -PreactNativeArchitectures=arm64-v8a --build-cache --max-workers=4 && mkdir -p /output && cp $APK_PATH /output/$(basename "$OUT_APK") && echo '===> Successfully copied APK to host output directory.'"
 
 docker compose run --rm -e CMAKE_BUILD_PARALLEL_LEVEL=4 android-builder bash -c "$CONTAINER_CMD"
 
