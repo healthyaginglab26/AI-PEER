@@ -672,8 +672,8 @@ export default function ExerciseSessionPage() {
           {/* debug angle overlay — commented out for the first device walkthrough
               so the skeleton overlay is visible without text obscuring it.
               uncomment when you need to validate angle thresholds / phase
-              transitions / keypoint confidence again.
-          {isTracking && debugAngle !== null && (() => {
+              transitions / keypoint confidence again.*/}
+          {isTracking && (() => {
             const activeRule = getExerciseRules(trackingExerciseId);
             return (
               <View style={styles.debugOverlay}>
@@ -704,7 +704,7 @@ export default function ExerciseSessionPage() {
               </View>
             );
           })()}
-          */}
+          
 
           {/* timer overlay */}
           {isTracking && secondsLeft !== null && (
