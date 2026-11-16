@@ -17,7 +17,7 @@ export const sitToStandRules1: ExerciseRule = {
     endMin: 145, endMax: 180,
     targetReps: 10
   },
-  totalSets: 1
+  totalSets: 1,
   cameraPrompt: 'Sit in a chair with your left shoulder facing the camera. Your full body, from head to feet, must be visible both when seated and when standing. Place your phone about 6-8 feet away, propped at roughly chest height while you are seated — a low floor angle does not work well for this exercise.',
   checks: [
     {

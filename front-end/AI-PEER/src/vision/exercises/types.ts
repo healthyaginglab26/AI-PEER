@@ -119,7 +119,7 @@ export type ExerciseRule = {
   /** Display name (e.g., 'Knee Bends') */
   name: string;
   /** Category for grouping */
-  category: 'assessment' | 'warmup' | 'strength' | 'balance';
+  category: 'assessment' | 'warmup' | 'strength' | 'balance' | 'upperBody' | 'lowerBody' | 'core' | 'dynamicBalance';
   /** List of form checks to perform */
   checks: FormCheck[];
   /** Minimum confidence to trust keypoints for this exercise */

@@ -35,7 +35,7 @@ import {
 import { usePrefs } from "../../src/prefs-context";
 import { type ContrastPalette } from "../../src/theme";
 
-type CatKey = "warmup" | "strength" | "balance";
+type CatKey = "warmup" | "strength" | "balance" | 'upperBody' | 'lowerBody' | 'core' | 'dynamicBalance';
 
 function toActivityCategory(
   cat?: string,
