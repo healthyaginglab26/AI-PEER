@@ -171,7 +171,9 @@
     "loadingModel": "Loading model...",
     "askAi": "Ask AI Chat about fall risk, activity, or tips",
     "modelLoadingPlaceholder": "Model loading...",
-    "typeYourQuestion": "Type your question..."
+    "typeYourQuestion": "Type your question...",
+    "newChat": "New Chat",
+    "history": "History"
   },
   "activity": {
     "warmup": "Warm Up",
