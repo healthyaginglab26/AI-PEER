@@ -135,7 +135,7 @@ class LLMService {
   private isInitializing = false;
 
   /** Private constructor enforces singleton pattern */
-  private constructor() {}
+  private constructor() { }
 
   /** Get the singleton instance */
   static getInstance(): LLMService {
@@ -267,14 +267,14 @@ class LLMService {
         },
         onToken
           ? (data: TokenCallbackData) => {
-              if (!data?.token) return;
-              accumulatedRaw += data.token;
-              const visibleText = sanitizeStreamedText(accumulatedRaw);
-              if (visibleText !== lastVisibleText) {
-                lastVisibleText = visibleText;
-                onToken(data.token, visibleText);
-              }
+            if (!data?.token) return;
+            accumulatedRaw += data.token;
+            const visibleText = sanitizeStreamedText(accumulatedRaw);
+            if (visibleText !== lastVisibleText) {
+              lastVisibleText = visibleText;
+              onToken(data.token, visibleText);
             }
+          }
           : undefined
       );
 
@@ -282,8 +282,7 @@ class LLMService {
       const finalSource = result?.text ?? accumulatedRaw;
       const tps = result?.timings?.predicted_per_second;
       console.log(
-        `Generated ${finalSource.length} chars in ${elapsed}ms${
-          tps ? ` (${tps.toFixed(1)} tokens/sec)` : ''
+        `Generated ${finalSource.length} chars in ${elapsed}ms${tps ? ` (${tps.toFixed(1)} tokens/sec)` : ''
         }`
       );
 
