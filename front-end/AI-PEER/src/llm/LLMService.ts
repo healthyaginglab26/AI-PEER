@@ -138,6 +138,8 @@ class LLMService {
   private static instance: LLMService;
   private context: LlamaContextLike | null = null;
   private isInitializing = false;
+  private isGenerating = false;
+  private pendingRelease = false;
 
   /** Private constructor enforces singleton pattern */
   private constructor() { }
@@ -259,6 +261,8 @@ class LLMService {
     const startTime = Date.now();
     let accumulatedRaw = '';
     let lastVisibleText = '';
+    this.isGenerating = true;
+    this.pendingRelease = false;
 
     try {
       const result = await this.context.completion(
@@ -300,6 +304,12 @@ class LLMService {
     } catch (error) {
       console.error('Generation failed:', error);
       throw error;
+    } finally {
+      this.isGenerating = false;
+      if (this.pendingRelease) {
+        this.pendingRelease = false;
+        await this.release();
+      }
     }
   }
 
@@ -308,10 +318,17 @@ class LLMService {
    * Call this when the app is backgrounded or memory is low
    */
   async release(): Promise<void> {
+    if (this.isGenerating) {
+      console.log('Deferring LLM release until active generation finishes');
+      this.pendingRelease = true;
+      return;
+    }
+
     if (this.context) {
       console.log('Releasing LLM context');
-      await this.context.release();
+      const ctx = this.context;
       this.context = null;
+      await ctx.release();
     }
   }
 }

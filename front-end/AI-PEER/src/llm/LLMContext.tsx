@@ -134,6 +134,14 @@ export function LLMProvider({ children }: { children: ReactNode }) {
               conversations = [parsed];
             }
           }
+
+          // Drop any empty assistant placeholders if an earlier session was killed mid-generation
+          conversations = conversations.map((c) => ({
+            ...c,
+            messages: c.messages.filter(
+              (m) => !(m.role === 'assistant' && !m.content.trim())
+            ),
+          }));
         }
 
         // If no conversations or all expired, create a new one
@@ -183,7 +191,9 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     try {
       await LLMService.release();
     } finally {
-      setState((s) => (s.isModelLoaded ? { ...s, isModelLoaded: false } : s));
+      if (!LLMService.isReady()) {
+        setState((s) => (s.isModelLoaded ? { ...s, isModelLoaded: false } : s));
+      }
     }
   }, []);
 
@@ -377,7 +387,11 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         }));
         throw error;
       } finally {
-        setState((s) => ({ ...s, isGenerating: false }));
+        setState((s) => ({
+          ...s,
+          isGenerating: false,
+          isModelLoaded: LLMService.isReady(),
+        }));
       }
     },
     [conversation, currentConversationId]
