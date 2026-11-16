@@ -113,6 +113,11 @@ export function sanitizeStreamedText(rawText: string): string {
   // 5. Strip any trailing partial tag fragment at the end of the stream
   text = stripTrailingPartialTag(text);
 
+  // 6. Enforce the no-emoji rule deterministically (2B models occasionally ignore negative prompt rules)
+  text = text
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F\u200D]/gu, '')
+    .replace(/[ \t]{2,}/g, ' ');
+
   return text;
 }
 
