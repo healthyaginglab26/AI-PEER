@@ -8,9 +8,18 @@
   3. Waits until Metro Bundler reports 'packager-status:running' on http://localhost:8081/status
   4. Configures 'adb reverse' for ports 8081 and 8085 if an Android phone is connected
 
+.PARAMETER Fresh
+  Clears Metro's bundle cache (aipeer-metro-cache), restarts Metro, and relaunches the Android app
+  so recent .ts/.tsx edits are guaranteed to load on Windows Docker.
+
 .EXAMPLE
   .\scripts\start-dev.ps1
+  .\scripts\start-dev.ps1 -Fresh
 #>
+
+param (
+    [switch]$Fresh
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -19,6 +28,12 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 Set-Location $RepoRoot
 
 & (Join-Path $ScriptDir "setup-env.ps1")
+
+if ($Fresh) {
+    Write-Host "==> Clearing Metro bundle cache (aipeer-metro-cache)..." -ForegroundColor Yellow
+    docker compose rm -f -s web
+    docker volume rm aipeer-metro-cache 2>$null | Out-Null
+}
 
 Write-Host "==> Starting API and Metro (web) containers..." -ForegroundColor Cyan
 docker compose up -d api web
@@ -50,6 +65,11 @@ if (Get-Command adb -ErrorAction SilentlyContinue) {
         adb reverse tcp:8081 tcp:8081
         adb reverse tcp:8085 tcp:8085
         Write-Host "==> Android phone detected! USB tunnels (8081 & 8085) are active." -ForegroundColor Green
+        if ($Fresh) {
+            Write-Host "==> Relaunching AI-PEER on phone with fresh bundle..." -ForegroundColor Cyan
+            adb shell am force-stop com.anonymous.aipeer
+            adb shell am start -n com.anonymous.aipeer/.MainActivity | Out-Null
+        }
     } else {
         Write-Host "==> Notice: No Android phone currently detected on USB ('adb devices' is empty)." -ForegroundColor Yellow
         Write-Host "    After plugging in your phone, re-run .\scripts\start-dev.ps1 to forward ports 8081 & 8085." -ForegroundColor Yellow

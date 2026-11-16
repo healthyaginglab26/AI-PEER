@@ -16,7 +16,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+FRESH=false
+for arg in "$@"; do
+  case "$arg" in
+    --fresh|-f)
+      FRESH=true
+      ;;
+  esac
+done
+
 "$SCRIPT_DIR/setup-env.sh"
+
+if [ "$FRESH" = true ]; then
+  echo "==> Clearing Metro bundle cache (aipeer-metro-cache)..."
+  docker compose rm -f -s web
+  docker volume rm aipeer-metro-cache >/dev/null 2>&1 || true
+fi
 
 echo "==> Starting API and Metro (web) containers..."
 docker compose up -d api web
@@ -50,6 +65,11 @@ if command -v adb >/dev/null 2>&1; then
     adb reverse tcp:8081 tcp:8081
     adb reverse tcp:8085 tcp:8085
     echo "==> Android phone detected! USB tunnels (8081 & 8085) active + auto-reconnect watcher running."
+    if [ "$FRESH" = true ]; then
+      echo "==> Relaunching AI-PEER on phone with fresh bundle..."
+      adb shell am force-stop com.anonymous.aipeer
+      adb shell am start -n com.anonymous.aipeer/.MainActivity >/dev/null
+    fi
   else
     echo "==> Notice: No Android phone currently detected on USB ('adb devices' is empty)."
     echo "    Background USB watcher is running—as soon as you plug in your phone, ports 8081 & 8085 will auto-connect!"
