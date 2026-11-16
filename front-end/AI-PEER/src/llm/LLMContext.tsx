@@ -47,6 +47,7 @@ type LLMContextValue = {
   // Actions
   startDownload: () => Promise<void>;
   initializeModel: () => Promise<void>;
+  releaseModel: () => Promise<void>;
   sendMessage: (content: string) => Promise<string>;
   clearConversation: () => void;
 
@@ -133,6 +134,14 @@ export function LLMProvider({ children }: { children: ReactNode }) {
               conversations = [parsed];
             }
           }
+
+          // Drop any empty assistant placeholders if an earlier session was killed mid-generation
+          conversations = conversations.map((c) => ({
+            ...c,
+            messages: c.messages.filter(
+              (m) => !(m.role === 'assistant' && !m.content.trim())
+            ),
+          }));
         }
 
         // If no conversations or all expired, create a new one
@@ -177,9 +186,21 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     }
   }, [allConversations, state.isGenerating]);
 
+  /** Release the model from memory to free ~1.2 GB RAM (e.g. on background or camera use) */
+  const releaseModel = useCallback(async () => {
+    try {
+      await LLMService.release();
+    } finally {
+      if (!LLMService.isReady()) {
+        setState((s) => (s.isModelLoaded ? { ...s, isModelLoaded: false } : s));
+      }
+    }
+  }, []);
+
   // Continuous sweep: every 15 minutes and whenever the app returns to the
   // foreground, drop any conversation that has aged past the TTL. updating
   // state triggers the save effect above, which rewrites AsyncStorage.
+  // Also release the ~1.2 GB LLM context when backgrounded to prevent OOM kills.
   useEffect(() => {
     const sweep = () => {
       setAllConversations((prev) => {
@@ -189,13 +210,17 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     };
     const interval = setInterval(sweep, 15 * 60 * 1000);
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') sweep();
+      if (s === 'active') {
+        sweep();
+      } else if (s === 'background') {
+        releaseModel().catch(console.error);
+      }
     });
     return () => {
       clearInterval(interval);
       sub.remove();
     };
-  }, []);
+  }, [releaseModel]);
 
   // Save current conversation ID whenever it changes
   useEffect(() => {
@@ -362,7 +387,11 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         }));
         throw error;
       } finally {
-        setState((s) => ({ ...s, isGenerating: false }));
+        setState((s) => ({
+          ...s,
+          isGenerating: false,
+          isModelLoaded: LLMService.isReady(),
+        }));
       }
     },
     [conversation, currentConversationId]
@@ -422,6 +451,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         allConversations,
         startDownload,
         initializeModel,
+        releaseModel,
         sendMessage,
         clearConversation,
         selectConversation,

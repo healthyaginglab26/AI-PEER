@@ -11,7 +11,7 @@
  * - Clear conversation option
  */
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -22,9 +22,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useLLM } from "@/src/llm";
 import ModelDownloadModal from "@/components/ModelDownloadModal";
@@ -67,12 +68,25 @@ export default function AiChatScreen() {
     }
   }, [needsDownload]);
 
-  // Auto-initialize model after download
-  useEffect(() => {
-    if (needsInit && !isDownloading) {
-      initializeModel().catch(console.error);
-    }
-  }, [needsInit, isDownloading, initializeModel]);
+  // Auto-initialize model when AI Chat is focused and app is active
+  // (also reloads cleanly after backgrounding or returning from camera screens)
+  useFocusEffect(
+    useCallback(() => {
+      const maybeInit = () => {
+        if (AppState.currentState === "active" && needsInit && !isDownloading) {
+          initializeModel().catch(console.error);
+        }
+      };
+
+      maybeInit();
+      const sub = AppState.addEventListener("change", (nextState) => {
+        if (nextState === "active") {
+          maybeInit();
+        }
+      });
+      return () => sub.remove();
+    }, [needsInit, isDownloading, initializeModel])
+  );
 
   // Scroll to bottom when messages change or stream in
   const lastMessageContent = messages[messages.length - 1]?.content ?? "";

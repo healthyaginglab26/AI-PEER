@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useLLM } from "@/src/llm";
 import {
   Camera,
   useCameraDevice,
@@ -94,6 +95,13 @@ function stateLabel(state: TugState, t: (key: string) => string): string {
 
 export default function TugTestPage() {
   const router = useRouter();
+  const { releaseModel } = useLLM();
+
+  useFocusEffect(
+    useCallback(() => {
+      releaseModel().catch(console.error);
+    }, [releaseModel])
+  );
   const { colors } = usePrefs();
   const { t } = useTranslation();
   const styles = useMemo(() => createStyles(colors), [colors]);

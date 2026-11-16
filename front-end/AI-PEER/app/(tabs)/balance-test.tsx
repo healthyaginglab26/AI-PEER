@@ -1,5 +1,4 @@
-import React from "react";
-import { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,7 +9,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useLLM } from "@/src/llm";
 import { useTranslation } from "react-i18next";
 import { usePrefs } from "@/src/prefs-context";
 import { type ContrastPalette } from "../../src/theme";
@@ -28,6 +28,13 @@ type Test = {
 
 export default function BalanceTestPage() {
   const router = useRouter();
+  const { releaseModel } = useLLM();
+
+  useFocusEffect(
+    useCallback(() => {
+      releaseModel().catch(console.error);
+    }, [releaseModel])
+  );
   const { scaled, colors } = usePrefs();
   const { t } = useTranslation();
   const styles = useMemo(() => createStyles(colors), [colors]);

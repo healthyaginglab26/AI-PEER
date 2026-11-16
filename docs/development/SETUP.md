@@ -189,6 +189,7 @@ Once the Debug APK is on your phone, **never run `build-android-docker` again** 
 
 | What happened | What to run |
 |---|---|
+| **Black screen on startup** | Close the app and swipe it away from recent apps, then reopen it. |
 | **Red "Unable to load script" screen / USB was unplugged** | Run `.\scripts\start-dev.ps1` (or `./scripts/start-dev.sh`), then reopen the app. *(Make sure your phone's USB mode is **File Transfer**, not Charging Only, and you tapped "Always allow" on the USB Debugging prompt.)* |
 | **App is still running your old `.ts`/`.tsx` code** *(Fast Refresh missed it, or you changed `.env`, `metro.config.js`, `LLMService.initialize()`, or switched branches)* | Run `.\scripts\start-dev.ps1 -Fresh` (or `./scripts/start-dev.sh --fresh`). |
 | **Added or changed native Android packages in `package.json` or `android/`** | Full native reset + rebuild Debug APK:<br>`docker compose down; docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache aipeer-metro-cache`<br>`.\scripts\build-android-docker.ps1 -BuildType debug -Install` |

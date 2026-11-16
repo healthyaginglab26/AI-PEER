@@ -113,6 +113,11 @@ export function sanitizeStreamedText(rawText: string): string {
   // 5. Strip any trailing partial tag fragment at the end of the stream
   text = stripTrailingPartialTag(text);
 
+  // 6. Enforce the no-emoji rule deterministically (2B models occasionally ignore negative prompt rules)
+  text = text
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F\u200D]/gu, '')
+    .replace(/[ \t]{2,}/g, ' ');
+
   return text;
 }
 
@@ -133,9 +138,11 @@ class LLMService {
   private static instance: LLMService;
   private context: LlamaContextLike | null = null;
   private isInitializing = false;
+  private isGenerating = false;
+  private pendingRelease = false;
 
   /** Private constructor enforces singleton pattern */
-  private constructor() {}
+  private constructor() { }
 
   /** Get the singleton instance */
   static getInstance(): LLMService {
@@ -254,6 +261,8 @@ class LLMService {
     const startTime = Date.now();
     let accumulatedRaw = '';
     let lastVisibleText = '';
+    this.isGenerating = true;
+    this.pendingRelease = false;
 
     try {
       const result = await this.context.completion(
@@ -267,14 +276,14 @@ class LLMService {
         },
         onToken
           ? (data: TokenCallbackData) => {
-              if (!data?.token) return;
-              accumulatedRaw += data.token;
-              const visibleText = sanitizeStreamedText(accumulatedRaw);
-              if (visibleText !== lastVisibleText) {
-                lastVisibleText = visibleText;
-                onToken(data.token, visibleText);
-              }
+            if (!data?.token) return;
+            accumulatedRaw += data.token;
+            const visibleText = sanitizeStreamedText(accumulatedRaw);
+            if (visibleText !== lastVisibleText) {
+              lastVisibleText = visibleText;
+              onToken(data.token, visibleText);
             }
+          }
           : undefined
       );
 
@@ -282,8 +291,7 @@ class LLMService {
       const finalSource = result?.text ?? accumulatedRaw;
       const tps = result?.timings?.predicted_per_second;
       console.log(
-        `Generated ${finalSource.length} chars in ${elapsed}ms${
-          tps ? ` (${tps.toFixed(1)} tokens/sec)` : ''
+        `Generated ${finalSource.length} chars in ${elapsed}ms${tps ? ` (${tps.toFixed(1)} tokens/sec)` : ''
         }`
       );
 
@@ -296,6 +304,12 @@ class LLMService {
     } catch (error) {
       console.error('Generation failed:', error);
       throw error;
+    } finally {
+      this.isGenerating = false;
+      if (this.pendingRelease) {
+        this.pendingRelease = false;
+        await this.release();
+      }
     }
   }
 
@@ -304,10 +318,17 @@ class LLMService {
    * Call this when the app is backgrounded or memory is low
    */
   async release(): Promise<void> {
+    if (this.isGenerating) {
+      console.log('Deferring LLM release until active generation finishes');
+      this.pendingRelease = true;
+      return;
+    }
+
     if (this.context) {
       console.log('Releasing LLM context');
-      await this.context.release();
+      const ctx = this.context;
       this.context = null;
+      await ctx.release();
     }
   }
 }

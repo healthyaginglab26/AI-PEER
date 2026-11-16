@@ -24,6 +24,7 @@ export function useLLM() {
     allConversations,
     startDownload,
     initializeModel,
+    releaseModel,
     sendMessage,
     clearConversation,
     selectConversation,
@@ -175,6 +176,7 @@ export function useLLM() {
     downloadAndInit,
     startDownload,
     initializeModel,
+    releaseModel,
     clear,
 
     // Multi-conversation actions
