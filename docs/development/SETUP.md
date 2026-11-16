@@ -145,7 +145,7 @@ Then open **`http://localhost:8081`** in your browser! Every time you press Save
 docker compose stop web api
 
 # Restart Web & clear Metro bundler cache (only needed if you change metro.config.js or .env):
-docker compose stop web
+docker compose rm -f -s web
 docker volume rm aipeer-metro-cache
 docker compose up -d web
 
@@ -196,8 +196,8 @@ adb reverse --remove-all
 ./scripts/start-dev.sh          # macOS / Linux / Git Bash
 .\scripts\start-dev.ps1         # Windows PowerShell
 
-# Hard Metro Cache Reset (only needed if you change .env or metro.config.js):
-docker compose stop web
+# Hard Metro Cache Reset (use if you change .env, metro.config.js, switch branches, or see stale JS after a container restart):
+docker compose rm -f -s web
 docker volume rm aipeer-metro-cache
 ./scripts/start-dev.sh          # or .\scripts\start-dev.ps1
 
