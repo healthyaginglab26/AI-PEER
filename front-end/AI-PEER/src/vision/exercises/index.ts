@@ -43,6 +43,9 @@ import { heelWalkingRules } from './balance/heelWalking';
 import { toeWalkingRules } from './balance/toeWalking';
 import { heelToeWalkBackwardsRules } from './balance/heelToeWalkBackwards';
 
+// PEER Lower Body exercises
+import { sitToStandRules1} from './lowerBody/sitToStand1'
+
 /**
  * Registry mapping exercise ID to its rules.
  * Use getExerciseRules(id) to look up rules for an exercise.
@@ -83,6 +86,10 @@ export const exerciseRegistry: Record<string, ExerciseRule> = {
   'balance-9': heelWalkingRules,
   'balance-10': toeWalkingRules,
   'balance-11': heelToeWalkBackwardsRules,
+
+
+  // PEER Lower Body ()
+  'lowerBody-1-1': sitToStandRules1
 };
 
 /**
