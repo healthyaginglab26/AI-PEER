@@ -73,10 +73,10 @@ The signed URL expires in 1 hour. The GCS bucket is `qwenfinetune` (override via
 
 ```ts
 export const MODEL_FILENAME = 'Qwen3.5-2B-aipeer-Q4_K_M.gguf';
-export const MODEL_SIZE_BYTES = 1215 * 1024 * 1024;  // ~1.2 GB
+export const MODEL_SIZE_BYTES = 1280835840;  // Exact size of Qwen3.5-2B-aipeer-Q4_K_M.gguf (~1,221 MB)
 ```
 
-`getModelPath()` (`modelDownloader.ts:25-27`) returns:
+`getModelPath()` (`modelDownloader.ts:27-29`) returns:
 ```
 {documentDirectory}Qwen3.5-2B-aipeer-Q4_K_M.gguf
 ```
@@ -85,22 +85,24 @@ persists across app restarts, and survives OS upgrades.
 
 ### Cache check
 
-`isModelDownloaded()` (`modelDownloader.ts:30-47`) calls `getInfoAsync` on the path.
-If the file exists but is smaller than `MODEL_SIZE_BYTES * 0.9` (i.e., less than 90% of
-expected 1.2 GB), the file is treated as a corrupt or partial download and deleted so the
-downloader will start fresh on the next call.
+`isModelDownloaded()` (`modelDownloader.ts:37-59`) calls `getInfoAsync` on the path.
+It requires `fileInfo.size >= MODEL_SIZE_BYTES` (hard-coded in `src/llm/config.ts`). If the
+file exists but is smaller than `MODEL_SIZE_BYTES`, it is treated as an incomplete or
+corrupt download and deleted so the downloader starts fresh on the next call.
 
 ### Resumable download
 
-`createDownloadResumable` from `expo-file-system/legacy` (`modelDownloader.ts:101-112`)
-streams the file directly to disk without loading into memory and reports
-`totalBytesWritten / totalBytesExpectedToWrite` on each progress tick. If the download
-throws, the partial file is deleted (`modelDownloader.ts:124-125`). The current
-implementation does not persist the `DownloadResumable` object to AsyncStorage, so a
-mid-download app kill restarts from zero on next launch. However, `isModelDownloaded()`'s
-90% threshold means that if the partial file is large enough to pass the check on a
-subsequent launch (possible if the kill was very late), the bad file is accepted —
-see the Gotchas section.
+`createDownloadResumable` from `expo-file-system/legacy` (`modelDownloader.ts:110-149`)
+streams the file to a temporary `{MODEL_FILENAME}.part` file without loading into memory
+and reports `totalBytesWritten / totalBytesExpectedToWrite` on each progress tick. Only
+after `downloadAsync()` finishes and `partInfo.size >= MODEL_SIZE_BYTES` is verified does it
+move the `.part` file to the final `.gguf` path via `moveAsync`. If the download throws or
+the app is killed mid-download, the `.part` file is deleted on failure or before the next
+download, so a partial file never passes `isModelDownloaded()`.
+
+If `LLMService.initialize()` ever fails to load a GGUF that is on disk, `LLMContext.initializeModel()`
+automatically calls `deleteModel()` and resets `isModelDownloaded: false` so `ModelDownloadModal`
+prompts the user for a clean re-download.
 
 ### Old model cleanup
 
@@ -407,10 +409,12 @@ and the `LLMContext` sets `state.error`. The `ModelDownloadModal` shows a Retry 
 which re-fetches a fresh signed URL. For full diagnosis steps, see the
 "Model download hangs or returns an invalid GGUF" entry in `TROUBLESHOOTING.md`.
 
-**Partial file passing the 90% threshold.** A force-quit at exactly >90% completion
-leaves a file large enough to pass `isModelDownloaded()` but too truncated to be a valid
-GGUF. `initLlama` will fail with a parse error. The fix is the same as above: clear app
-data or delete the document-directory file and restart.
+**Hard-coded `MODEL_SIZE_BYTES` in `src/llm/config.ts`.** `MODEL_SIZE_BYTES` (`1280835840`)
+is hard-coded for `Qwen3.5-2B-aipeer-Q4_K_M.gguf`. Never overwrite an existing GGUF in GCS
+under the same filename with a differently sized file without updating `MODEL_SIZE_BYTES` in
+`src/llm/config.ts` (otherwise `isModelDownloaded()` and `downloadModel()` will reject a
+smaller file as incomplete and loop on re-download). Always bump `MODEL_FILENAME` and
+`MODEL_SIZE_BYTES` together when shipping a new model.
 
 **Model loading UI.** While `initializeModel()` runs (the 5-10 second llama.rn load),
 the chat header shows `t("ai-chat.loadingModel")` as the subtitle
