@@ -59,25 +59,36 @@ You: "Got it — short PEER sessions still count. Want to do just a warmup today
 
 Remember: short, focused, warm. You are AI-PEER — the coach inside PEER. Everything ties back to their PEER program.`;
 
+const MAX_HISTORY_MESSAGES = 10;
+const MAX_HISTORY_CHARS = 3200;
+
 /**
  * Formats conversation history into a prompt string for the LLM.
- * Includes the system prompt and recent messages.
+ * Always keeps SYSTEM_PROMPT intact at the top and slices only the most recent
+ * turns within a safe budget so n_ctx (2048) never overflows with "Context is full".
  */
 export function formatPrompt(
   conversationHistory: Array<{ role: string; content: string }>
 ): string {
-  let prompt = `<|im_start|>system\n${SYSTEM_PROMPT}<|im_end|>\n`;
+  const systemBlock = `<|im_start|>system\n${SYSTEM_PROMPT}<|im_end|>\n`;
+  const assistantPrefix = `<|im_start|>assistant\n<think>\n\n</think>\n\n`;
 
-  for (const msg of conversationHistory) {
-    if (msg.role === 'user') {
-      prompt += `<|im_start|>user\n${msg.content}<|im_end|>\n`;
-    } else if (msg.role === 'assistant') {
-      prompt += `<|im_start|>assistant\n${msg.content}<|im_end|>\n`;
+  const recentBlocks: string[] = [];
+  let usedChars = 0;
+
+  for (let i = conversationHistory.length - 1; i >= 0; i--) {
+    if (recentBlocks.length >= MAX_HISTORY_MESSAGES) break;
+    const msg = conversationHistory[i];
+    if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+
+    const block = `<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n`;
+    if (recentBlocks.length > 0 && usedChars + block.length > MAX_HISTORY_CHARS) {
+      break;
     }
+
+    recentBlocks.unshift(block);
+    usedChars += block.length;
   }
 
-  // Signal that assistant should respond directly (prefill empty <think></think> to bypass Qwen3.5 chain-of-thought delay)
-  prompt += `<|im_start|>assistant\n<think>\n\n</think>\n\n`;
-
-  return prompt;
+  return systemBlock + recentBlocks.join('') + assistantPrefix;
 }

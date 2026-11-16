@@ -33,6 +33,7 @@ import LLMService from './LLMService';
 import {
   isModelDownloaded,
   downloadModel,
+  deleteModel,
 } from './modelDownloader';
 import { useAuth } from '../auth';
 
@@ -243,9 +244,12 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, isModelLoaded: true }));
     } catch (error) {
       console.error('Model initialization failed:', error);
+      // Remove potentially corrupted GGUF so the user is prompted to re-download cleanly
+      await deleteModel().catch(console.error);
       setState((s) => ({
         ...s,
         error: `Failed to load model: ${error}`,
+        isModelDownloaded: false,
         isModelLoaded: false,
       }));
       throw error;

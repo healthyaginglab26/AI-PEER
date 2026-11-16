@@ -46,7 +46,7 @@ export default function AiChatScreen() {
     downloadAndInit,
     startDownload,
     initializeModel,
-    clear,
+    startNew,
   } = useLLM();
 
   const [input, setInput] = useState("");
@@ -107,8 +107,10 @@ export default function AiChatScreen() {
   }
 
   // Handle clear conversation
-  function handleClear() {
-    clear();
+  // Start a fresh conversation (keeps current chat in 24h local history)
+  function handleNewChat() {
+    if (isGenerating) return;
+    startNew();
   }
 
   return (
@@ -130,11 +132,11 @@ export default function AiChatScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Ionicons name="chatbubble-ellipses-outline" size={20} color={warmRed} />
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[styles.title, { fontSize: scaled.h3 }]}>AI PEER</Text>
-              <Text style={[styles.subtitle, { fontSize: scaled.h2/2 }]}> 
+              <Text style={[styles.subtitle, { fontSize: scaled.h2 / 2 }]}>
                 {!isReady
                   ? needsDownload
                     ? t("ai-chat.downloadRequired")
@@ -144,26 +146,37 @@ export default function AiChatScreen() {
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* New Chat button - archives current chat in 24h local history and starts fresh */}
+            {messages.length > 1 && (
+              <TouchableOpacity
+                onPress={handleNewChat}
+                style={[styles.headerButton, isGenerating && { opacity: 0.5 }]}
+                activeOpacity={0.7}
+                disabled={isGenerating}
+                accessibilityRole="button"
+                accessibilityLabel={t("ai-chat.newChat")}
+              >
+                <Ionicons name="add-circle-outline" size={18} color={warmRed} />
+                <Text style={[styles.headerButtonText, { color: warmRed, fontSize: scaled.small }]}>
+                  {t("ai-chat.newChat")}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* History button - navigate to conversation list */}
             <TouchableOpacity
               onPress={() => router.push("/chat-history" as any)}
               style={styles.headerButton}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t("ai-chat.history")}
             >
               <Ionicons name="time-outline" size={18} color={subtleText} />
+              <Text style={[styles.headerButtonText, { color: subtleText, fontSize: scaled.small }]}>
+                {t("ai-chat.history")}
+              </Text>
             </TouchableOpacity>
-
-            {/* Clear button */}
-            {messages.length > 1 && (
-              <TouchableOpacity
-                onPress={handleClear}
-                style={styles.headerButton}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="trash-outline" size={18} color={subtleText} />
-              </TouchableOpacity>
-            )}
           </View>
         </View>
 
@@ -271,9 +284,16 @@ const createStyles = (colors: ContrastPalette) => StyleSheet.create({
   title: { fontSize: 18, fontWeight: "800", letterSpacing: 0.3, color: colors.text },
   subtitle: { fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 4 },
   headerButton: {
-    padding: 8,
-    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
     backgroundColor: colors.bgTile,
+  },
+  headerButtonText: {
+    fontWeight: "600",
   },
 
   chatCard: {

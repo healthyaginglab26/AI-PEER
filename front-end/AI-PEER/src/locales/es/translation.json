@@ -171,7 +171,9 @@
     "loadingModel": "Cargando modelo...",
     "askAi": "Pregunte al Chat con IA sobre el riesgo de caídas, la actividad o consejos",
     "modelLoadingPlaceholder": "Cargando modelo...",
-    "typeYourQuestion": "Escriba su pregunta..."
+    "typeYourQuestion": "Escriba su pregunta...",
+    "newChat": "Nuevo chat",
+    "history": "Historial"
   },
   "activity": {
     "warmup": "Calentamiento",

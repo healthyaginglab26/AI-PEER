@@ -171,7 +171,9 @@
     "loadingModel": "Modèl la ap chaje...",
     "askAi": "Mande Chat AI sou risk chit, aktivite, oswa konsèy",
     "modelLoadingPlaceholder": "Modèl la ap chaje...",
-    "typeYourQuestion": "Tape kesyon ou..."
+    "typeYourQuestion": "Tape kesyon ou...",
+    "newChat": "Nouvo Chat",
+    "history": "Istorik"
   },
   "activity": {
     "warmup": "Chofaj",

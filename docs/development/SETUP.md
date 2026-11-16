@@ -145,7 +145,7 @@ Then open **`http://localhost:8081`** in your browser! Every time you press Save
 docker compose stop web api
 
 # Restart Web & clear Metro bundler cache (only needed if you change metro.config.js or .env):
-docker compose stop web
+docker compose rm -f -s web
 docker volume rm aipeer-metro-cache
 docker compose up -d web
 
@@ -159,9 +159,9 @@ docker compose up -d --build api web
 
 #### 🔄 Mode 2: Live-Reloading Android Dev Build (Compile Once, Edit Instantly)
 
-If you need the real phone camera (`VisionCamera`) or real 1.2 GB `llama.rn` model on your Android phone, **do not rebuild the APK after every code change.** Build the `debug` APK **once**, then stream live JavaScript updates over USB:
+Use Mode 2 when you need the real phone camera (`VisionCamera`) or the on-device `llama.rn` SLM while editing `.ts` / `.tsx` files. You only compile the Debug APK **once** unless you change native Android code or packages, uninstall the app from your phone, or get a new phone.
 
-**1. Build & install the Debug APK once (automatically starts API + Metro and forwards USB ports):**
+**1. First time only — build & install the Debug APK:**
 ```powershell
 # Windows (PowerShell):
 .\scripts\build-android-docker.ps1 -BuildType debug -Install
@@ -169,61 +169,36 @@ If you need the real phone camera (`VisionCamera`) or real 1.2 GB `llama.rn` mod
 # macOS / Linux / Git Bash:
 ./scripts/build-android-docker.sh debug --install
 ```
-*(When `-BuildType debug -Install` / `debug --install` is used, the build script automatically starts the `api` and `web` Metro containers, waits until Metro reports `packager-status:running` on port 8081, sets up `adb reverse` for ports `8081` and `8085`, and only then launches the app on your phone so it never hits an "Unable to load script" screen.)*
+*(If PowerShell blocks the script, see [Troubleshooting #5](#5-windows-powershell-execution-policy-restrictions).)*
 
-If you are experiencing "Permission denied" issues, navigate to troubleshooting step 5.
-
-**2. Resuming your session later (after unplugging your phone or rebooting your PC):**
-Because the Debug APK is already installed on your phone, you do **not** need to run `build-android-docker` again! Just plug in your phone and run:
+**2. Every other time — start Metro & reconnect USB:**
+Once the Debug APK is on your phone, **never run `build-android-docker` again** unless you change native Android packages. Plug in your phone and run:
 ```powershell
-# macOS / Linux / Git Bash (starts API + Metro + background USB auto-reconnect watcher):
-./scripts/start-dev.sh
-
 # Windows (PowerShell):
 .\scripts\start-dev.ps1
-```
-Now, whenever you edit any `.tsx` or `.ts` file (like `ai-chat.tsx` or `systemPrompt.ts`) and press Save, your phone updates in **1–2 seconds** without ever running Docker Android compilation again!
 
-##### Mode 2 — Stop, Clear Cache & Reset Commands:
-```powershell
-# Stop the Metro & API servers when finished for the day:
-docker compose stop web api
+# Windows (after editing .ts/.tsx files, if Fast Refresh missed them):
+.\scripts\start-dev.ps1 -Fresh
 
-# Clear USB port-forwarding rules on your phone (optional):
-adb reverse --remove-all
-
-# Fast Reconnect (restarts Metro in ~2s using persistent cache + restores USB tunnels):
-./scripts/start-dev.sh          # macOS / Linux / Git Bash
-.\scripts\start-dev.ps1         # Windows PowerShell
-
-# Hard Metro Cache Reset (only needed if you change .env or metro.config.js):
-docker compose stop web
-docker volume rm aipeer-metro-cache
-./scripts/start-dev.sh          # or .\scripts\start-dev.ps1
-
-# Full Native Reset (only needed if you add/change native Android packages in package.json):
-docker compose down
-docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache aipeer-metro-cache
 # macOS / Linux / Git Bash:
-./scripts/build-android-docker.sh debug --install
-# Windows (PowerShell):
-.\scripts\build-android-docker.ps1 -BuildType debug -Install
+./scripts/start-dev.sh          # or ./scripts/start-dev.sh --fresh
+```
+`-Fresh` / `--fresh` clears `aipeer-metro-cache`, restarts Metro, restores USB tunnels, and relaunches the app on your phone in one step (especially useful on Windows Docker, where Linux Metro can miss NTFS file-change events).
+
+**3. If something looks wrong — pick the lightest fix that matches:**
+
+| What happened | What to run |
+|---|---|
+| **Red "Unable to load script" screen / USB was unplugged** | Run `.\scripts\start-dev.ps1` (or `./scripts/start-dev.sh`), then reopen the app. *(Make sure your phone's USB mode is **File Transfer**, not Charging Only, and you tapped "Always allow" on the USB Debugging prompt.)* |
+| **App is still running your old `.ts`/`.tsx` code** *(Fast Refresh missed it, or you changed `.env`, `metro.config.js`, `LLMService.initialize()`, or switched branches)* | Run `.\scripts\start-dev.ps1 -Fresh` (or `./scripts/start-dev.sh --fresh`). |
+| **Added or changed native Android packages in `package.json` or `android/`** | Full native reset + rebuild Debug APK:<br>`docker compose down; docker volume rm aipeer-gradle-cache aipeer-node-modules-cache aipeer-android-cxx-cache aipeer-android-build-cache aipeer-metro-cache`<br>`.\scripts\build-android-docker.ps1 -BuildType debug -Install` |
+
+**4. Stop when finished for the day:**
+```powershell
+docker compose stop web api
 ```
 
-> [!WARNING]
-> **Common Small Mistakes That Break Metro (And How to Fix Them):**
->
-> This is necessary because Metro is the worst thing ever to have been invented since the dawn of time.
->
-> | Mistake / Trigger | Why It Breaks Metro | Instant Fix |
-> |---|---|---|
-> | **Unplugging the USB cable or switching USB mode** *(Charging vs. File Transfer)* | Android silently wipes all `adb reverse` port tunnels (`8081` & `8085`) the instant the USB connection resets—even for half a second. | Run `./scripts/start-dev.sh` (or `.\scripts\start-dev.ps1`), or `adb reverse tcp:8081 tcp:8081 && adb reverse tcp:8085 tcp:8085`, then tap **Reload** (`R, R`) on the phone. |
-> | **Opening the Debug APK on the phone while unplugged** | A `debug` APK (`app-debug.apk`) contains **zero** embedded JavaScript—it *must* fetch code live from port `8081`. | Either plug into USB and run `./scripts/start-dev.sh`, **or** install the standalone Release APK (`./scripts/build-android-docker.sh --install`) if you want to use the phone unplugged. |
-> | **Launching the app right after `docker compose up -d web` before Metro is ready** | On the very first cold boot (before `aipeer-metro-cache` is populated), Metro takes ~15–20 seconds to index 1,173 modules. Opening the app too early causes a connection timeout. | Always start via `./scripts/start-dev.sh` / `.\scripts\start-dev.ps1`—it polls `http://localhost:8081/status` until `packager-status:running` before returning. |
-> | **Running local `npx expo start` AND Docker `web` at the same time** | Both try to bind port `8081`, or your phone connects to the wrong Metro process. | Use one or the other. If using local Node, stop the Docker container first: `docker compose stop web`. |
-> | **Editing `front-end/AI-PEER/.env` and expecting hot-reload to update it** | Metro inlines `EXPO_PUBLIC_*` environment variables at bundle transform time and caches them in `aipeer-metro-cache`. | Wipe the Metro cache volume after editing `.env`: `docker compose stop web && docker volume rm aipeer-metro-cache && ./scripts/start-dev.sh`. |
-> | **Adding `--clear` or `tty: true` to `web` in `docker-compose.yml`** | `--clear` wipes the bundle cache on every container restart (causing 20s startup freezes), and `tty: true` tricks Expo CLI into launching `xdg-open` (a desktop browser) inside a headless container. | Keep `docker-compose.yml` `web` service non-interactive (`tty` unset) and use `docker volume rm aipeer-metro-cache` only when an explicit cache clear is needed. |
-> | **`adb devices` says `unauthorized` or `insufficient permissions`** | If ADB isn't authorized on the phone screen (or Linux `udev` rules block USB access), `adb reverse` fails and the phone cannot reach port `8081`. | Unlock your phone and tap **"Always allow from this computer"** on the USB Debugging prompt. On Linux, if `adb devices` says `no permissions`, run `adb kill-server && sudo adb start-server`. |
+*(Note: Never run local `npx expo start` at the same time as the Docker `web` container—both use port `8081`. And if you want to use the phone unplugged, build Mode 3's standalone Release APK instead.)*
 
 ---
 
