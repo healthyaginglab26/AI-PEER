@@ -1,6 +1,7 @@
 /**
- * Sit to Stand
- * Balance exercise for functional leg strength
+ * Sit to Stand Level 1
+ * Orientation: facing camera, seated in chair
+ * Lower Body exercise for functional leg strength
  */
 
 import { ExerciseRule } from '../types';
@@ -18,7 +19,7 @@ export const sitToStandRules1: ExerciseRule = {
     targetReps: 10
   },
   totalSets: 1,
-  cameraPrompt: 'Sit in a chair with your left shoulder facing the camera. Your full body, from head to feet, must be visible both when seated and when standing. Place your phone about 6-8 feet away, propped at roughly chest height while you are seated — a low floor angle does not work well for this exercise.',
+  cameraPrompt: 'Sit in a chair facing the camera. Your full body, from head to feet, must be visible both when seated and when standing. Place your phone about 6-8 feet away, propped at roughly chest height while you are seated — a low floor angle does not work well for this exercise.',
   checks: [
     {
       type: 'alignment',

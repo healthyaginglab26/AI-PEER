@@ -90,6 +90,27 @@ export type DistanceCheck = {
 /** Union of all check types */
 export type FormCheck = AngleCheck | AlignmentCheck | PositionCheck | DistanceCheck;
 
+/** Second configuration for bilateral rep-counted exercises */
+export type SecondaryRepConfig = {
+  /** Measurement mode: 'angle' (default), 'distance', or 'angle3d' (uses z-coordinate) */
+  mode?: 'angle' | 'distance' | 'angle3d';
+  /** For angle mode: [p1, vertex, p3] — angle measured at vertex */
+  /** For distance mode: [movingKp, anchorKp, referenceKp1] — tracks horizontal distance between movingKp and anchorKp, normalized by referenceKp1-to-anchorKp vertical height */
+  keypoints: [string, string, string];
+  /** Optional second triplet for bilateral exercises (e.g. squats). When set,
+   *  the rep counter computes the angle on both sides and uses their average
+   *  as the gating value. Both sides must have confident keypoints or the
+   *  frame is dropped. Only supported in default 'angle' mode. */
+  startMin: number;
+  startMax: number;
+  /** "End" zone of the rep (angle in degrees, or normalized distance ratio) */
+  endMin: number;
+  endMax: number;
+  /** Number of reps per set */
+  targetReps: number;
+  /** Secondary rule set for bilateral exercises */
+}
+
 /** Configuration for rep-counted exercises */
 export type RepConfig = {
   /** Measurement mode: 'angle' (default), 'distance', or 'angle3d' (uses z-coordinate) */
@@ -110,6 +131,8 @@ export type RepConfig = {
   endMax: number;
   /** Number of reps per set */
   targetReps: number;
+  /** Secondary rule set for bilateral exercises */
+  secondaryConfig?: SecondaryRepConfig;
 };
 
 /** Complete rule set for an exercise */
@@ -120,6 +143,8 @@ export type ExerciseRule = {
   name: string;
   /** Category for grouping */
   category: 'assessment' | 'warmup' | 'strength' | 'balance' | 'upperBody' | 'lowerBody' | 'core' | 'dynamicBalance';
+  /** Difficulty level (1 = easiest, 3 = hardest) */
+  level?: number;
   /** List of form checks to perform */
   checks: FormCheck[];
   /** Minimum confidence to trust keypoints for this exercise */

@@ -44,7 +44,10 @@ import { toeWalkingRules } from './balance/toeWalking';
 import { heelToeWalkBackwardsRules } from './balance/heelToeWalkBackwards';
 
 // PEER Lower Body exercises
-import { sitToStandRules1} from './lowerBody/sitToStand1'
+import { sitToStandRules1 } from './lowerBody/sitToStand1';
+import { sitToStandRules2 } from './lowerBody/sitToStand2';
+import { sitToStandRules3 } from './lowerBody/sitToStand3';
+import { splitSquatRules1L } from './lowerBody/splitSquat1L';
 
 /**
  * Registry mapping exercise ID to its rules.
@@ -89,7 +92,10 @@ export const exerciseRegistry: Record<string, ExerciseRule> = {
 
 
   // PEER Lower Body ()
-  'lowerBody-1-1': sitToStandRules1
+  'lowerBody-1-1': sitToStandRules1,
+  'lowerBody-1-2': sitToStandRules2,
+  'lowerBody-1-3': sitToStandRules3,
+  'lowerBody-2-1-left': splitSquatRules1L,
 };
 
 /**
