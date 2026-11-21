@@ -173,7 +173,6 @@ function checkPosition(pose:Pose,check:PositionCheck):FormViolation|null{
 }
 
 
-
 // binary per-frame score: 100 if all checks passed, 0 if any failed.
 // the consumer (exercise-session, chair-rise-test) averages per-frame scores
 // across the activity, which yields the percentage of frames with all checks

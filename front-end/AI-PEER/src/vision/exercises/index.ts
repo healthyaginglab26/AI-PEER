@@ -47,7 +47,22 @@ import { heelToeWalkBackwardsRules } from './balance/heelToeWalkBackwards';
 import { sitToStandRules1 } from './lowerBody/sitToStand1';
 import { sitToStandRules2 } from './lowerBody/sitToStand2';
 import { sitToStandRules3 } from './lowerBody/sitToStand3';
-import { splitSquatRules1L } from './lowerBody/splitSquat1L';
+import { splitSquatRules1 } from './lowerBody/splitSquat1';
+import { splitSquatRules2 } from './lowerBody/splitSquat2';
+import { splitSquatRules3 } from './lowerBody/splitSquat3';
+import { dbSquatRules1 } from './lowerBody/dbSquat1';
+import { dbSquatRules2 } from './lowerBody/dbSquat2';
+import { dbSquatRules3 } from './lowerBody/dbSquat3';
+import { hipHingeRules1 } from './lowerBody/hipHinge1';
+import { hipHingeRules2 } from './lowerBody/hipHinge2';
+import { hipHingeRules3 } from './lowerBody/hipHinge3';
+import { standHamCurlL1Rules } from './lowerBody/standHamCurlL1';
+import { standHamCurlL2Rules } from './lowerBody/standHamCurlL2';
+import { standHamCurlL3Rules } from './lowerBody/standHamCurlL3';
+import { standHamCurlR1Rules } from './lowerBody/standHamCurlR1';
+import { standHamCurlR2Rules } from './lowerBody/standHamCurlR2';
+import { standHamCurlR3Rules } from './lowerBody/standHamCurlR3';
+
 
 /**
  * Registry mapping exercise ID to its rules.
@@ -95,7 +110,21 @@ export const exerciseRegistry: Record<string, ExerciseRule> = {
   'lowerBody-1-1': sitToStandRules1,
   'lowerBody-1-2': sitToStandRules2,
   'lowerBody-1-3': sitToStandRules3,
-  'lowerBody-2-1-left': splitSquatRules1L,
+  'lowerBody-2-1': splitSquatRules1,
+  'lowerBody-2-2': splitSquatRules2,
+  'lowerBody-2-3': splitSquatRules3,
+  'lowerBody-3-1': dbSquatRules1,
+  'lowerBody-3-2': dbSquatRules2,
+  'lowerBody-3-3': dbSquatRules3,
+  'lowerBody-4-1': hipHingeRules1,
+  'lowerBody-4-2': hipHingeRules2,
+  'lowerBody-4-3': hipHingeRules3,
+  'lowerBody-5-1l': standHamCurlL1Rules,
+  'lowerBody-5-2l': standHamCurlL2Rules,
+  'lowerBody-5-3l': standHamCurlL3Rules,
+  'lowerBody-5-1r': standHamCurlR1Rules,
+  'lowerBody-5-2r': standHamCurlR2Rules,
+  'lowerBody-5-3r': standHamCurlR3Rules,
 };
 
 /**
