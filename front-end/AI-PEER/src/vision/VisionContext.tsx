@@ -76,7 +76,7 @@ const initialState: VisionState = {
 };
 
 // throttle state updates to ~5hz so we don't spam re-renders
-const STATE_UPDATE_INTERVAL = 200;
+const STATE_UPDATE_INTERVAL = 100;
 
 // a form-check violation must be continuously failing for at least this many
 // ms before we surface it. catches single-frame keypoint glitches without
